@@ -15,6 +15,7 @@ import pandas as pd
 import urllib
 import sys
 import os
+import itertools
 
 #############################################################################
 # Constants
@@ -23,61 +24,69 @@ FIELD_SEP = ','
 PARENT_SEP = '|'
 COMPRESSION = 'bz2'
 DEFAULTTYPE = 'concept' #within ontology by default
-LOGFILE = '<path>/log<source>Parser-<name>.txt'
+LOGFILE = '<path>/log_parser_<name>.txt'
 INNACTIVITY = 1800 #30min
 TSFORMAT = '%Y-%m-%d %H:%M:%S'
 DUMMYSTART = 'INIT'
 DUMMYEND = 'END'
+DUMMIES = [DUMMYSTART,DUMMYEND]
 KEY = {'clickstream':'ip', 'apirequests':'apikey'}
 MAX_LENGTH = 6
+
 
 class TransitionParser(Utils):
 
     #############################################################################
     # CONSTRUCTOR
     #############################################################################
-    def __init__(self,source,fn,results,filter,type,sizepath):
+    def __init__(self,source,fn,results,filterin,filterout,type,sizepath):
         self.source = source
+        self.results = results
         self.fn = fn
-        self.output = os.path.join(results,self.source)
-        self.filter = filter
-        self.type = type
+        self.filterin = filterin
+        self.filterout = filterout
+        self.year = self.getYearFromFileName(fn)
+        self.output = self.generatePath(self.results,self.year,self.source,self.filterin,self.filterout)
+        self.type = type  # concept, ontology (for generation of states)
         self.sizepath = sizepath
         self.name = self._getName()
-        self.logfile = LOGFILE.replace('source',self.source.capitalize()).replace('<path>',self.output).replace('<name>',self.name)
+        self.logfile = LOGFILE.replace('<path>',self.output).replace('<name>',self.name)
 
     #############################################################################
     # Functions Handlers
     #############################################################################
 
     def _getName(self):
-        a=''
-        b=''
+        a='FilterIn'
         c=''
+        d=''
 
-        ### Filter: all data or specific ontology
-        if self.filter is None:
-            a = '-alldata'
+        ### Filterin: all data or specific ontology
+        if self.filterin is None:
+            a = 'alldata'.format(a)
         else:
-            for k,v in self.filter.items():
-                a = '{}-{}:{}'.format(a,k,v)
+            for k,v in self.filterin.items():
+                a = '{}_{}_{}'.format(a,k,v)
+                a = a.replace(' ','_')
+            if len(self.filterin.keys()) == 1:
+                a = a.replace('FilterIn_ontology_','')
 
         ### Type: Within or Across Ontologies
         if self.type == 'ontology':
-            b ='-across_ontologies'
+            c ='across_ontos'
         elif self.type == 'concept':
-            b = '-within_ontologies'
+            c = 'within_ontos'
 
         ### Sizepath: number os HOPs between source and target node
         if self.sizepath == 0:
-            c = '-directlink'
+            d = 'directpath'
         else:
-            c = '-{}indirectlinks'.format(self.sizepath)
+            d = '{}HOP'.format(self.sizepath)
 
-        return '{}{}{}{}'.format(self.source,a,b,c)
+        return '{}_{}_{}_{}'.format(self.source[0],a,c,d)
 
-    def _getFilename(self,postfix,ext):
-        return os.path.join(self.output,'{}-{}.{}'.format(self.name,postfix,ext))
+    def _getFilename(self,prefix,ext):
+        return os.path.join(self.output,'{}_{}.{}'.format(prefix,self.name,ext))
 
     def getGraphFilename(self):
         return self._getFilename('graph','gpickle')
@@ -88,8 +97,20 @@ class TransitionParser(Utils):
     def getSessionsFilename(self):
         return self._getFilename('sessions','p')
 
-    def getCountsPositionVsDurationFileName(self,prefix,session_length):
-        return self._getFilename('{}_position_vs_duration_{}sessionlength'.format(prefix,session_length),'png')
+    def getEntryPointsDataFileName(self):
+        return self._getFilename('entry_points','p')
+
+    def getExitPointsDataFileName(self):
+        return self._getFilename('exit_points','p')
+
+    def getEntryAndExitPointsPlotFileName(self):
+        return self._getFilename('entry_exit_points','png')
+
+    def getDistributionEdgeWeightsPlotFileName(self):
+        return self._getFilename('distribution_edgeweights','png')
+
+    def getCountsPositionVsDurationPlotFileName(self,session_length):
+        return self._getFilename('position_vs_duration_{}nodesession'.format(session_length),'png')
 
     #############################################################################
     # TRANSITION GRAPH AND MATRIX
@@ -104,7 +125,7 @@ class TransitionParser(Utils):
     ###
     def createTransitionGraph(self):
 
-        if self.filter is not None and 'ontology' in self.filter and self.type == 'ontology':
+        if self.filterin is not None and 'ontology' in self.filterin and self.type == 'ontology':
             self.log('WARNING: You have selected {} across ontologies. Exit.'.format(self.source))
             sys.exit(0)
 
@@ -163,12 +184,14 @@ class TransitionParser(Utils):
             self.log('Loading Transitions Graph: {}'.format(fn))
             G = self.loadGraph(self.getGraphFilename())
 
-        self.log('number of nodes: {}'.format(G.number_of_nodes()))
-        self.log('number of edges: {}'.format(G.number_of_edges()))
+        self.log('SUMMARY (with DUMMIES)\n{}'.format(nx.info(G)))
+        G.remove_nodes_from(DUMMIES)
+        self.log('SUMMARY (without DUMMIES)\n{}'.format(nx.info(G)))
 
+        ### The calculation of mode, min, max, etc. can be done faster using numpy ( i think )
         weights = [edge[2]['weight'] for edge in G.edges(data=True) if 'weight' in edge[2]]
         onepercent = len(sessions.keys()) * 1 / 100.
-        self.log('\n=== SUMMARY WEIGHTS ===\n({} avg | {} median | {} mode | {} max | {} min | {} == 1 | {} > 1 | {} > 5 | {} > avg | {} > {} 1% ips | {} total ips )'.format(
+        self.log('\n=== SUMMARY WEIGHTS ===\n({} avg | {} median | {} mode | {} max | {} min | {} == 1 | {} > 1 | {} > 5 | {} > avg | {} > {} 1% {} | {} total {} )'.format(
             self.avg(weights), self.median(weights), self.mode(weights), max(weights), min(weights),
             len([w for w in weights if w == 1]),
             len([w for w in weights if w > 1]),
@@ -176,7 +199,12 @@ class TransitionParser(Utils):
             len([w for w in weights if w > self.avg(weights)]),
             len([w for w in weights if w > onepercent]),
             onepercent,
-            len(sessions.keys())))
+            KEY[self.source],
+            len(sessions.keys()),
+            KEY[self.source]))
+
+        self.log('{} Total transitions (sum of all weights)'.format(sum([e[2]['weight'] for e in G.edges(data=True)])))
+        self.log('{} Total transitions weight > 1 (sum of all weights > 1)'.format(sum([e[2]['weight'] for e in G.edges(data=True) if e[2]['weight'] > 1])))
 
         return G
 
@@ -189,25 +217,30 @@ class TransitionParser(Utils):
                 name = int(tmp)
                 name = None
             except:
-                if tmp != 'nan' and len(tmp) > 0:
+                if tmp.lower() != 'nan' and len(tmp) > 0 and tmp != 'http':
                     name = tmp
 
         elif self.type == 'concept':
             if tmp != 'http' and len(str(tmp)) > 0 and str(tmp).lower() != 'nan' and tmp != '':
                 if 'http' in tmp:
-                    tmp = urllib.unquote(urllib.unquote(tmp))
-                    key = '/ontology/'
-                    if key in tmp:
-                        s = tmp[tmp.index(key)+len(key):].split('/')
-                        if len(s) == 1:
-                            name = s[0]
-                        else:
-                            name = s[1]
-                    else:
+
+                    if 'Thesaurus' in tmp:
                         name = tmp
+                    else:
+                        tmp = urllib.unquote(urllib.unquote(tmp))
+                        key = '/ontology/'
+                        if key in tmp:
+                            s = tmp[tmp.index(key)+len(key):].split('/')
+                            if len(s) == 1:
+                                name = s[0]
+                                self.log('len==1: {}: {} : {} <<<<<<----------------------------- this must be an error?'.format(self.type,name,state[self.type]))
+                            else:
+                                name = s[1]
+                        else:
+                            name = tmp
+
                 elif tmp.lower() != 'nan':
                     name = tmp
-
         return name
 
     def readServerLogData(self):
@@ -215,15 +248,22 @@ class TransitionParser(Utils):
         df = pd.read_csv(self.fn,sep=FIELD_SEP,compression=COMPRESSION)
         self.log('Shape all data ({}): {}'.format(self.fn,df.shape))
 
-        ### sorting by datetime
+        ### sorting by datetime and req_id
         df['timestamp'] = pd.to_datetime(df.timestamp)
-        df = df.sort_values(by='timestamp')
+        df = df.sort_values(by=['timestamp','req_id'])
 
-        ### Excluding some rows which do not fulfil the condition
-        if self.filter is not None:
-            for column_name, value in self.filter.items():
+        ### Excluding some rows which DO NOT fulfil the condition
+        if self.filterin is not None:
+            for column_name, value in self.filterin.items():
                 df = df.loc[df[column_name] == value]
-        self.log('Shape filtered data ({}): {}'.format(self.fn,df.shape))
+        self.log('Shape filtered-in data ({}): {}'.format(self.fn,df.shape))
+
+        ### Excluding some rows which DO fulfil the condition
+        if self.filterout is not None:
+            for column_name, value in self.filterout.items():
+                df = df.loc[df[column_name] != value]
+        self.log('Shape filtered-out data ({}): {}'.format(self.fn,df.shape))
+
         return df
 
     def getTransitionGraph(self):
@@ -234,11 +274,28 @@ class TransitionParser(Utils):
             self.log('Loading Transitions Graph: {}'.format(fn))
             return self.loadGraph(self.getGraphFilename())
 
+    def removeDummies(self, G):
+        self.log('Session graph original: {} edges'.format(G.number_of_edges()))
+        ### Removing edges from and to START and INIT (dummy states)
+        for dummy in DUMMIES:
+            G.remove_node(dummy)
+        self.log('Session graph without dummy states: {} edges'.format(G.number_of_edges()))
+        return G
+
+    def removeEdgesByWeight(self, G, threshold):
+        ### Remove edges with weight == threshold
+        for edge in G.edges(data=True):
+            if edge[2]['weight'] == threshold:
+                G.remove_edge(*edge[:2])
+        self.log('Session graph without edges weight=1: {} edges'.format(G.number_of_edges()))
+        return G
+
     #############################################################################
     # SESSIONS
     #############################################################################
     def createSessions(self,df):
         sessionsizes = []
+        ipaddresses = set()
 
         if df is None:
             df = self.readLogData()
@@ -249,7 +306,7 @@ class TransitionParser(Utils):
 
             for name, group in grouped:
 
-                ### IPADDRESS: user
+                ### Clickstream: IP address | API Request: Api Key
                 key = name
                 session_seq = 0
 
@@ -263,6 +320,8 @@ class TransitionParser(Utils):
                     if not self.isConsecutive(row['timestamp'],previous_timestamp):
                         session_seq += 1
                         sessions[key][session_seq] = []
+
+                    ipaddresses.add(row['ip'])
 
                     sessions[key][session_seq].append({'timestamp':row['timestamp'],
                                    'req_id':row['req_id'],
@@ -286,9 +345,10 @@ class TransitionParser(Utils):
             self.saveSessions(sessions)
         else:
             sessions = self.getSessions()
-            sessionsizes = [len(actions) for ip_address,obj in sessions.items() for sequenceid,actions in obj.items()]
+            sessionsizes = [len(actions) for key,obj in sessions.items() for sequenceid,actions in obj.items()]
+            ipaddresses = set([action['ip'] for key,obj in sessions.items() for sequenceid,actions in obj.items() for action in actions])
 
-        self.log('\n=== SUMMARY SESSIONS {} === \n# {}s({}) - {} TOTAL SESSIONS - SESSION_LENGHT_STATS( {} avg | {} median | {} mode | {} max | {} min | {} == 1 | {} > 1 | {} > avg | {} == max )'.format(
+        self.log('\n=== SUMMARY SESSIONS {} === \n# {}s({}) - {} TOTAL SESSIONS - SESSION_LENGHT_STATS( {} avg | {} median | {} mode | {} max | {} min | {} == 1 | {} > 1 | {} > avg | {} == max | {} IPs )'.format(
             self.name,
             self.source.upper(),
             len(sessions.keys()),
@@ -301,10 +361,9 @@ class TransitionParser(Utils):
             len([1 for ss in sessionsizes if ss == 1]),
             len([1 for ss in sessionsizes if ss > 1]),
             len([1 for ss in sessionsizes if ss > self.avg(sessionsizes)]),
-            len([1 for ss in sessionsizes if ss == max(sessionsizes)])
+            len([1 for ss in sessionsizes if ss == max(sessionsizes)]),
+            len(ipaddresses)
         ))
-
-
 
         return sessions
 
@@ -334,9 +393,8 @@ class TransitionParser(Utils):
     def getRelativePosition(self, index, sessionlength):
         return float('{0:.1f}'.format(index/float(sessionlength)))
 
-    def _plotPositionVsAttribute(self,attribute,data,positions,attributes, session_length):
+    def _plotPositionVsAttribute(self,attribute,data,positions,attributes,fn):
         ### HEATMAP
-        fn = self.getCountsPositionVsDurationFileName('heatmap',session_length)
         y = [positions.index(position) for position,obj in data.items() for attribut,counts in obj.items() if counts > 1]
         x = [attributes.index(attribut) for position,obj in data.items() for attribut,counts in obj.items() if counts > 1]
         z = [counts for position,obj in data.items() for attribut,counts in obj.items() if counts > 1]
@@ -371,8 +429,6 @@ class TransitionParser(Utils):
                             duration = round(self.deltaTimestamps(timestamp1,timestamp2,TSFORMAT).total_seconds())
                             position = self.getRelativePosition(index,nactions-1)
 
-                            #print('{} / {} = {} ?'.format(index, nactions-1, position))
-
                             positions.add(position)
                             durations.add(duration)
 
@@ -387,12 +443,13 @@ class TransitionParser(Utils):
         return data,sorted(list(positions)),sorted(list(durations))
 
     def plotPositionVsDuration(self):
-        session_lengths = [2,3,4,5,6]
+        session_lengths = [2,3,4,5,6] #number of nodes in session
         for session_length in session_lengths:
-            self.log('=== SESION_LENGTH: {} ==='.format(session_length))
+            self.log('=== SESION_LENGTH: {} nodes in session ==='.format(session_length))
             data,positions,attributes = self.getCountsPositionVsDuration(session_length)
-            self._plotPositionVsAttribute('duration',data,positions,attributes,session_length)
-            #raw_input('...')
+
+            fn = self.getCountsPositionVsDurationPlotFileName(session_length)
+            self._plotPositionVsAttribute('duration',data,positions,attributes,fn)
 
     ### Path Positon vs Search
     def getCountsPositionVsSearch(self):
@@ -400,7 +457,77 @@ class TransitionParser(Utils):
 
     def plotPositionVsSearch(self):
         data,positions,attributes = self.getCountsPositionVsSearch()
-        self._plotPositionVsAttribute('search',data,positions,attributes)
+        self._plotPositionVsAttribute('search',data,positions,attributes,None)
+
+    #############################################################################
+    # ENTRY AND EXIT POINTS
+    #############################################################################
+    def plotEntryAndExitPoints(self):
+
+        fnentry = self.getEntryPointsDataFileName()
+        fnexit = self.getExitPointsDataFileName()
+        topk = 10
+
+        if self.exists(fnentry) and self.exists(fnexit):
+            entry_points = self.loadPickle(fnentry)
+            exit_points = self.loadPickle(fnexit)
+            self.log('Entry and Exit points Loaded!')
+        else:
+            threshold = 10
+            G = self.loadGraph(self.getGraphFilename())
+
+            while True:
+                entry_points = {n.split('/')[-1]:G[DUMMYSTART][n]['weight'] for n in nx.all_neighbors(G,DUMMYSTART) if G[DUMMYSTART][n]['weight'] >= threshold}
+                exit_points = {n.split('/')[-1]:G[n][DUMMYEND]['weight'] for n in nx.all_neighbors(G,DUMMYEND) if G[n][DUMMYEND]['weight'] >= threshold}
+                if len(entry_points.keys()) >= 1 and len(exit_points.keys()) >= 1:
+                    break
+                elif threshold == 1:
+                    self.log('THERE IS NO ENOUGH DATA TO PLOT.')
+                else:
+                    threshold = 1
+            ### Saving data
+            self.savePickle(entry_points,fnentry)
+            self.savePickle(exit_points,fnexit)
+            self.log('Entry and Exit points Saved!')
+
+        ### TOPK
+        entry_sorted = self.sortDict(entry_points,True,True)[:topk]
+        exit_sorted = self.sortDict(exit_points,True,True)[:topk]
+        entry_points = {nw[0]:nw[1] for nw in entry_sorted}
+        exit_points = {nw[0]:nw[1] for nw in exit_sorted}
+
+        ### DATAFRAME
+        actions = list(set(entry_points.keys()).union(set(exit_points.keys())))
+        data = {'action':actions, 'as_entry':[0 if n not in entry_points else entry_points[n] for n in actions], 'as_exit':[0 if n not in exit_points else exit_points[n] for n in actions]}
+        df = pd.DataFrame(data, columns = data.keys())
+
+        ### PLOT
+        fn = self.getEntryAndExitPointsPlotFileName()
+        self.plotGroupBars(df=df,
+                           title='{}'.format('ALL ONTOLOGIES' if self.filterin is None else '{} CONCEPTS'.format(self.filterin['ontology'])),
+                           xlabel=self.type.title(),
+                           fn=fn,
+                           labelkey='action',
+                           groups=['as_entry','as_exit'],
+                           ylog=True,
+                           xticks=True,
+                           posdelta=True)
+        return
+
+    def plotDistributionEdgeWeights(self):
+        G = self.loadGraph(self.getGraphFilename())
+        data = [edge[2]['weight'] for edge in  G.edges(data=True)]
+
+        weights = list(set(data))
+        counts = [data.count(w) for w in weights]
+
+        fn = self.getDistributionEdgeWeightsPlotFileName()
+        self.scatterPlot({'x':weights, 'y':counts},fn,
+                         logy=True,logx=True,alpha=0.2,
+                         xlabel='Edge-Weights',ylabel='Edge-Counts\n(frequency)',
+                         title='{}'.format('ONTOLOGIES' if self.filterin is None else '{} CONCEPTS'.format(self.filterin['ontology'])))
+
+
 
     #############################################################################
     # TESTS
@@ -436,18 +563,21 @@ class TransitionParser(Utils):
 #       python transitionParser.py clickstream /home/lespin/datasets/bioportal/clickstream/BP_webpage_requests_2016.csv.bz2 ../results/ ontology None 0
 #############################################################################
 if __name__ == '__main__':
-    source = utils.getParameter(1)  # clickstream, apirequests
-    fn = utils.getParameter(2)      # data filelog
-    results = utils.getParameter(3) #pointing to results
-    type = utils.getParameter(4)    # ontology (across ontologies), concept (within ontologies)
-    filter = utils.getParameter(5)  # "{'ontology':'<ontology_name>'}" or "{'ontologies':['<ontology_name>','<ontology_name>']}" or None
-    sizepath = utils.getParameter(6) # integer (number of hops between source and target nodes)
+    source = utils.getParameter(1)      # clickstream, apirequests
+    fn = utils.getParameter(2)          # data filelog
+    results = utils.getParameter(3)     #pointing to results
+    type = utils.getParameter(4)        # ontology (across ontologies), concept (within ontologies)
+    filterin = utils.getParameter(5)    # "{'ontology':'<ontology_name>'}" or "{'ontologies':['<ontology_name>','<ontology_name>']}" or None
+    filterout = utils.getParameter(6)   # "{'request_action':'Browse Ontology Class Tree'}" or None
+    sizepath = utils.getParameter(7)    # integer (number of hops between source and target nodes)
 
-    cp = TransitionParser(source,fn,results,filter,type,sizepath)
+    cp = TransitionParser(source,fn,results,filterin,filterout,type,sizepath)
     cp.loginit()
-    #cp.createTransitionGraph()
-    cp.plotPositionVsDuration()
-    #cp.plotPositionVsSearch()
+    cp.createTransitionGraph()
+    # #cp.plotPositionVsDuration()
+    # #cp.plotPositionVsSearch()
+    cp.plotDistributionEdgeWeights()
+    cp.plotEntryAndExitPoints()
     cp.logend()
 
     # ### CHECK SORTING

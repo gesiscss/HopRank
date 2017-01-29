@@ -1,7 +1,11 @@
 __author__ = 'espin'
 
 #############################################################################
-# Dependences
+# Local Dependences
+#############################################################################
+
+#############################################################################
+# System Dependences
 #############################################################################
 import sys
 from scipy import io
@@ -17,9 +21,6 @@ import numpy as np
 import time
 import operator
 import itertools
-import multiprocessing
-import pathos.multiprocessing as mp
-from joblib import Parallel, delayed
 
 #############################################################################
 # Functions
@@ -51,16 +52,6 @@ def getParameter(index):
 #############################################################################
 HOP1 = 1
 HOP2 = 2
-
-
-##############################################################################
-# HANDLERS
-##############################################################################
-def _getNeighbors(G, nodes):
-    return set(tuple(sorted((source,target))) for source,neighbors in {node:nx.all_neighbors(G,node) for node in nodes}.items() for target in neighbors)
-
-def _getSiblings(G, nodes):
-    return set(tuple(sorted(edge)) for siblings in [tuple(G.successors(node)) for node in nodes] if len(siblings) > 1 for edge in itertools.combinations(siblings, 2))
 
 
 ##############################################################################
@@ -160,6 +151,50 @@ class Utils(object):
     def exists(self,fn):
         return os.path.exists(fn)
 
+    def getYearFromFileName(self, fn):
+        ### format: BP_webpage_requests_2015.csv.bz2
+        try:
+            year = str(int(fn.split('.')[0].split('_')[-1])) #if not int then except
+        except:
+            year = ''
+        return year
+
+    def generateSimplePath(self, root, year, source):
+        ### root: results path
+        ### year: dataset year
+        ### type: ontologies, clickstream, apirequests, transitions
+        path = os.path.join(os.path.join(root,year),source)
+        if self.createFolder(path):
+            return path
+        return None
+
+    def generatePath(self, root, year, source, filterin, filterout):
+
+        path = os.path.join(os.path.join(root,year),source)
+        b = 'FilterOut'
+
+        ### Filterout: Removing records
+        if filterout is None:
+            b = '{}_None'.format(b)
+        else:
+            for k,v in self.filterout.items():
+                b = '{}_{}_{}'.format(b,k,v)
+                b = b.replace(' ','_')
+
+        path = os.path.join(path,b)
+        if self.createFolder(path):
+            return path
+        return None
+
+    def createFolder(self, path):
+        try:
+            if not os.path.exists(path):
+                os.makedirs(path)
+                return True
+            return True
+        except:
+            return False
+
     ####################################################################
     ### PLOTS
     ####################################################################
@@ -192,11 +227,92 @@ class Utils(object):
     def scatterPlot(self, data, fn, **kwargs):
         fig = plt.figure()
         ax = plt.gca()
-        ax.scatter(data['x'] ,data['y'] , c='blue', alpha=0.05, edgecolors='none')
-        ax.set_yscale('log')
+        ax.scatter(data['x'] ,data['y'] , c='blue', alpha=0.05 if 'alpha' not in kwargs else kwargs['alpha'], edgecolors='none')
+        if 'logy' in kwargs:
+            ax.set_yscale('log')
+        if 'logx' in kwargs:
+            ax.set_xscale('log')
+        if 'xlabel' in kwargs:
+            plt.xlabel(kwargs['xlabel'], fontsize=10)
+        if 'ylabel' in kwargs:
+            plt.ylabel(kwargs['ylabel'], fontsize=10)
+        if 'title' in kwargs:
+            plt.title(kwargs['title'])
         plt.grid(True)
+        plt.tight_layout()
         plt.savefig(fn)
         plt.close()
+
+    def plotGroupBars(self, df,title,fn,**kwargs):
+
+        labelkey = 'action' if 'labelkey' not in kwargs else kwargs['labelkey']
+        groups = ['as_entry','as_exit'] if 'groups' not in kwargs else kwargs['groups']
+        ylog = False if 'ylog' not in kwargs else kwargs['ylog']
+        xticks = False if 'xticks' not in kwargs else kwargs['xticks']
+        posdelta = False if 'posdelta' not in kwargs else kwargs['posdelta']
+        xlabel = None if 'xlabel' not in kwargs else kwargs['xlabel']
+        legend = kwargs['legend'] if 'legend' in kwargs else [s.replace('_', ' ').title() for s in groups]
+
+        colors = ['#EE3224','#F78F1E','#F6FF33','#C1FF33','#33FF3F','#33FFF9','#33C4FF','#3339FF','#8A33FF','#FC33FF','#FF33BE','#900C3F','#000000']
+        #red,orange,yellow,light green,green,cyan,blue,dark blue,purple,fucsia,pink,dar red,black
+
+        # Setting the positions and width for the bars
+        pos = list(range(len(df[labelkey])))
+        width = 0.25
+
+        # Plotting the bars
+        fig, ax = plt.subplots(figsize=(10,5))
+        for i,row in df.iterrows():
+            for j,g in enumerate(groups):
+                plt.bar([p + ((width*j) if posdelta else 0.) for p in pos],
+                    df[g],
+                    width,
+                    alpha=0.5,
+                    color=colors[j],
+                    label=row[labelkey])
+
+        # Scale
+        if ylog:
+            ax.set_yscale("log", nonposy='clip')
+
+        # Set the x axis label
+        if xlabel:
+            ax.set_xlabel(xlabel)
+
+        # Set the y axis label
+        ax.set_ylabel('Frequency')
+
+        # Set the chart's title
+        ax.set_title(title)
+
+        # Set the position of the x ticks
+        ax.set_xticks([p + ( (width*len(groups)/2.) if posdelta else (width/2.)) for p in pos])
+
+        # Set the labels for the x ticks
+        if xticks:
+            xticklabels = df[labelkey]
+        else:
+            xticklabels = list(pos)
+        ax.set_xticklabels(xticklabels,rotation=90,size=10 if len(pos) < 20 else 6)
+
+        # Setting the x-axis and y-axis limits
+        plt.xlim(min(pos)-width, max(pos)+width*4)
+
+        rows = df.shape[0]
+        tmp = range(rows)
+        for r in range(rows):
+            tmp[r] = 0
+            for g in groups:
+                tmp[r] += df[g][r]
+
+        plt.ylim([0.9 if ylog else 0., max(tmp)] )
+
+        # Adding the legend and showing the plot
+        plt.legend(legend, loc='upper left')
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(fn)
+        return
 
     ####################################################################
     ### MATHS
@@ -219,17 +335,17 @@ class Utils(object):
     ####################################################################
     ### DICTIONARIES
     ####################################################################
-    def sortDict(self, x, byValue=False, reverse=False):
-        return sorted(x.items(), key=operator.itemgetter(byValue), reverse=reverse)
+    def sortDict(self, x, byValue=False, descendent=False):
+        return sorted(x.items(), key=operator.itemgetter(byValue), reverse=descendent)
 
     ####################################################################
     ### GRAPHS
     ####################################################################
 
-    def nodesShareSameParents(self, G, s, t):
-        if s in G and t in G:
-            ps = G.predecessors(s)
-            pt = G.predecessors(t)
+    def areNodesSiblings(self, G, source, target):
+        if source in G and target in G:
+            ps = G.predecessors(source)
+            pt = G.predecessors(target)
             flag = len(list(set(ps).intersection(pt))) > 0
             #self.log('{}->{}:{}'.format(s,t,flag))
             return flag
@@ -237,70 +353,14 @@ class Utils(object):
 
     def areNodesNeighbors(self,G,source,target):
         try:
-            flag = target in nx.all_neighbors(G,source) #or source in nx.all_neighbors(G,target)
+            flag = target in nx.all_neighbors(G,source)
             return flag
         except:
             return False
 
-    ########################################
-    ### PARALLEL (WRONG)
-    ########################################
-    def _parallelConnectedNodes(self,G):
-        #2.1248190403 secods
-        #TRANS MATCHING: 7 out of 21261.0
-        #ONTO MATCHING: 7 out of 125.0
-        self.log('=== CONNECTED NODES ===')
-        data = G.nodes()
-        chunksize = len(data)/3
-        chunks = self.chunks(data,chunksize)
+    def areNodesConnected(self,G,source,target):
+        return self.areNodesNeighbors(G,source,target) or self.areNodesSiblings(G,source,target)
 
-        self.log('Nodes: {} | Chunks: {}'.format(len(data),len(data)/chunksize))
-        r1 = Parallel(n_jobs=2)(delayed(_getNeighbors)(G,nodes) for nodes in chunks)
-        neighbors = set([n for l in r1 for n in l])
-
-        r2 = Parallel(n_jobs=2)(delayed(_getSiblings)(G,nodes) for nodes in chunks)
-        siblings = set([n for l in r2 for n in l])
-
-        self.log('Neighbors: {}'.format(len(neighbors)))
-        self.log('Siblings: {}'.format(len(siblings)))
-        self.log('DONE')
-
-        return neighbors.union(siblings)
-
-
-    ########################################
-    ### PARALLEL (SLOW)
-    ########################################
-    def parallelConnectedNodes(self,G):
-        #END: 47.9949529171 secods.
-        #TRANS MATCHING: 8 out of 21261.0
-        #ONTO MATCHING: 8 out of 297.0
-        neighbors = set()
-        siblings = set()
-
-        data = G.nodes()
-        chunksize = 500 #int(round(len(data)/nchunks))
-        nchunks = int(round(len(data) / float(chunksize)))
-        chunks = self.chunks(data,chunksize)
-        pool = mp.Pool(int(nchunks*2)+1)
-
-        self.log('=== CONNECTED NODES ===')
-        self.log('Nodes: {} | Chunk Size {} | Nchunks {}'.format(len(data),chunksize,nchunks))
-        for i,nodes in enumerate(chunks):
-            self.log('PROCESS: {} of {} | {} nodes.'.format(i,nchunks,len(nodes)))
-            proc_neighbors = pool.apply_async(_getNeighbors, args=[G,nodes])
-            proc_siblings = pool.apply_async(_getSiblings, args=[G,nodes])
-
-            neighbors |= set(proc_neighbors.get())
-            siblings |= set(proc_siblings.get())
-
-        self.log('Processing...')
-        pool.close()
-        pool.join()
-
-        self.log('Neighbors: {}'.format(len(neighbors)))
-        self.log('Siblings: {}'.format(len(siblings)))
-        return neighbors.union(siblings)
 
     ########################################
     ### SEQUENTIAL
@@ -337,9 +397,113 @@ class Utils(object):
 
 
 
+
 ####################################################################
 ### DEPRECATED
 ####################################################################
+
+
+# def _getNeighbors(G, nodes):
+#     return set(tuple(sorted((source,target))) for source,neighbors in {node:nx.all_neighbors(G,node) for node in nodes}.items() for target in neighbors)
+#
+# def _getSiblings(G, nodes):
+#     return set(tuple(sorted(edge)) for siblings in [tuple(G.successors(node)) for node in nodes] if len(siblings) > 1 for edge in itertools.combinations(siblings, 2))
+#
+# def _getConnectedEdges(G, nodes):
+#     neighbors = set(tuple(sorted((source,target))) for source,neighbors in {node:nx.all_neighbors(G,node) for node in nodes}.items() for target in neighbors)
+#     siblings = set(tuple(sorted(edge)) for siblings in [tuple(G.successors(node)) for node in nodes] if len(siblings) > 1 for edge in itertools.combinations(siblings, 2))
+#     print('Neighbors: {}'.format(len(neighbors)))
+#     print('Siblings: {}'.format(len(siblings)))
+#     return neighbors.union(siblings)
+
+    ########################################
+    ### PARALLEL (SLOW)
+    ########################################
+    # def parallelConnectedNodes(self,G):
+    #     #END: 47.9949529171 secods.
+    #     #TRANS MATCHING: 8 out of 21261.0
+    #     #ONTO MATCHING: 8 out of 297.0
+    #     neighbors = set()
+    #     siblings = set()
+    #
+    #     data = G.nodes()
+    #     nnodes = len(data)
+    #     chunksize = nnodes if nnodes < 120000 else 500
+    #     nchunks = int(round(len(data) / float(chunksize)))
+    #     chunks = self.chunks(data,chunksize)
+    #     pool = mp.Pool(int(nchunks*2)+1)
+    #
+    #     self.log('=== CONNECTED NODES ===')
+    #     self.log('Nodes: {} | Chunk Size {} | Nchunks {}'.format(len(data),chunksize,nchunks))
+    #     for i,nodes in enumerate(chunks):
+    #         self.log('PROCESS: {} of {} | {} nodes.'.format(i,nchunks,len(nodes)))
+    #         proc_neighbors = pool.apply_async(_getNeighbors, args=[G,nodes])
+    #         proc_siblings = pool.apply_async(_getSiblings, args=[G,nodes])
+    #
+    #         neighbors |= set(proc_neighbors.get())
+    #         siblings |= set(proc_siblings.get())
+    #
+    #     self.log('Processing...')
+    #     pool.close()
+    #     pool.join()
+    #
+    #     self.log('Neighbors: {}'.format(len(neighbors)))
+    #     self.log('Siblings: {}'.format(len(siblings)))
+    #     return neighbors.union(siblings)
+
+ ########################################
+    ### PARALLEL (WRONG)
+    ########################################
+
+    # def _parallelNeighbors(self,G,chunks):
+    #     self.log('neighbors...')
+    #     r1 = Parallel(n_jobs=5)(delayed(_getNeighbors)(G,nodes) for nodes in chunks)
+    #     neighbors = set([n for l in r1 for n in l])
+    #     return neighbors
+    #
+    # def _parallelSiblings(self,G,chunks):
+    #     self.log('siblings...')
+    #     r2 = Parallel(n_jobs=5)(delayed(_getSiblings)(G,nodes) for nodes in chunks)
+    #     siblings = set([n for l in r2 for n in l])
+    #     return siblings
+
+    # def _parallelConnectedEdges(self, G, chunks):
+    #     self.log('connected...')
+    #     r = Parallel(n_jobs=20)(delayed(_getConnectedEdges)(G,nodes) for nodes in chunks)
+    #     connected = set([n for l in r for n in l])
+    #     return connected
+    #
+    # def parallelConnectedNodes(self,G):
+    #     self.log('=== CONNECTED NODES ===')
+    #     nodes = G.nodes()
+    #     chunksize = len(nodes)/100
+    #     chunks = self.chunks(nodes,chunksize)
+    #     self.log('Nodes: {} | Chunks: {}'.format(len(nodes),len(nodes)/chunksize))
+    #
+    #     connected_edges = self._parallelConnectedEdges(G,chunks)
+    #     self.log('DONE')
+    #     return connected_edges
+    #
+    #     # #2.1248190403 secods
+    #     # #TRANS MATCHING: 7 out of 21261.0
+    #     # #ONTO MATCHING: 7 out of 125.0
+    #     # self.log('=== CONNECTED NODES ===')
+    #     # data = G.nodes()
+    #     # chunksize = len(data)/3
+    #     # chunks = self.chunks(data,chunksize)
+    #     #
+    #     # self.log('Nodes: {} | Chunks: {}'.format(len(data),len(data)/chunksize))
+    #     # r1 = Parallel(n_jobs=2)(delayed(_getNeighbors)(G,nodes) for nodes in chunks)
+    #     # neighbors = set([n for l in r1 for n in l])
+    #     #
+    #     # r2 = Parallel(n_jobs=2)(delayed(_getSiblings)(G,nodes) for nodes in chunks)
+    #     # siblings = set([n for l in r2 for n in l])
+    #     #
+    #     # self.log('Neighbors: {}'.format(len(neighbors)))
+    #     # self.log('Siblings: {}'.format(len(siblings)))
+    #     # self.log('DONE')
+    #     #
+    #     # return neighbors.union(siblings)
 
     # def getEdgesByCommonChildren(self, G, nodes):
     #     pairs = []
