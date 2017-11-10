@@ -27,7 +27,7 @@ print(nx.info(G))
 #############################################################################
 
 RW = RandomWalk(G,True)
-length = 1000
+length = 10000
 teleportation = 0.15
 np.set_printoptions(precision=2)
 
@@ -63,3 +63,7 @@ print(RW.likelihood(path).toarray())
 print('\n===== M4: PAGERANK - RANDOM WALK WITHOUT TELEPORTATION =====')
 path = RW.random_walk(length,nodebias=nodebias)
 print(RW.likelihood(path).toarray())
+
+#############################################################################
+# HOPRANK
+#############################################################################

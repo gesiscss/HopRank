@@ -8,7 +8,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse import lil_matrix
 from sklearn.preprocessing import normalize
 import sys
-sys.setrecursionlimit(10000)
+sys.setrecursionlimit(100000)
 
 class RandomWalk(GraphMatrix):
 
