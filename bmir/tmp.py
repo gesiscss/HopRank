@@ -35,11 +35,11 @@ for simple in [True,False]:
 print('===== PAGERANK RANDOM WALK =====')
 PR = PageRank(G)
 PR.run()
-likelihood = PR.likelihood()
-print(likelihood)
+probabilities = PR.probabilities()
+print(probabilities)
 for simple in [True,False]:
     print('\n- Simple:{}'.format(simple))
-    results = RW.random_walks(start_points,lengths,simple,likelihood)
+    results = RW.random_walks(start_points,lengths,simple,probabilities)
     walks = filter(lambda a: len(a[0]) == a[1], results)
     residuals = filter(lambda a: len(a[0]) != a[1], results)
     paths = [w[0] for w in walks]

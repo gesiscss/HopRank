@@ -21,5 +21,5 @@ class GraphMatrix(object):
         u.printf('G must exist and be an instance of networkx.Graph')
         sys.exit(0)
 
-    def likelihood(self):
+    def probabilities(self):
         return

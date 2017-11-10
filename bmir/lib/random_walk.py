@@ -15,17 +15,17 @@ class RandomWalk(GraphMatrix):
     def __init__(self, G):
         super(RandomWalk, self).__init__(G)
 
-    def random_walk(self, start, length, simple=False, likelihood=None, path=None):
+    def random_walk(self, start, length, simple=False, probabilities=None, path=None):
         if simple:
-            walk = self._simple_random_walk(start, length, likelihood, path)
+            walk = self._simple_random_walk(start, length, probabilities, path)
         else:
-            walk = self._random_walk(start, length, likelihood, path)
+            walk = self._random_walk(start, length, probabilities, path)
         return (walk, length)
 
-    def _random_walk(self, start, length, likelihood=None, path=None):
+    def _random_walk(self, start, length, probabilities=None, path=None):
 
-        if likelihood is not None and len(likelihood) != self.N:
-            u.printf('Likelihood vector does not contain probabilities for all {} nodes.'.format(self.N))
+        if probabilities is not None and len(probabilities) != self.N:
+            u.printf('probabilities vector does not contain probabilities for all {} nodes.'.format(self.N))
             sys.exit(0)
 
         if start not in self.states:
@@ -43,22 +43,22 @@ class RandomWalk(GraphMatrix):
             return path
 
         outlinks = row.nonzero()[1]
-        if likelihood is not None:
-            prob = likelihood[outlinks]
+        if probabilities is not None:
+            prob = probabilities[outlinks]
             next_id = np.random.choice(outlinks, p=prob / prob.sum())
         else:
             next_id = np.random.choice(outlinks)
         next = self.states[next_id]
 
         if len(path) < length:
-            self._random_walk(next, length, likelihood, path)
+            self._random_walk(next, length, probabilities, path)
 
         return path
 
-    def _simple_random_walk(self, start, length, likelihood=None, path=None):
+    def _simple_random_walk(self, start, length, probabilities=None, path=None):
 
-        if likelihood is not None and len(likelihood) != self.N:
-            u.printf('Likelihood vector does not contain probabilities for all {} nodes.'.format(self.N))
+        if probabilities is not None and len(probabilities) != self.N:
+            u.printf('probabilities vector does not contain probabilities for all {} nodes.'.format(self.N))
             sys.exit(0)
 
         if start not in self.states:
@@ -78,8 +78,8 @@ class RandomWalk(GraphMatrix):
             return path
 
         outlinks = row.nonzero()[1]
-        if likelihood is not None:
-            prob = likelihood[outlinks]
+        if probabilities is not None:
+            prob = probabilities[outlinks]
             next_id = np.random.choice(outlinks,p=prob/prob.sum())
         else:
             next_id = np.random.choice(outlinks)
@@ -88,19 +88,19 @@ class RandomWalk(GraphMatrix):
         if len(path) < length:
             if next in path:
                 if row.nnz > 1:
-                    self._simple_random_walk(start, length, likelihood, path)
+                    self._simple_random_walk(start, length, probabilities, path)
                 else:
                     return path
             else:
-                self._simple_random_walk(next, length, likelihood, path)
+                self._simple_random_walk(next, length, probabilities, path)
 
         return path
 
-    def random_walks(self, start_points, lengths, simple=False, likelihood=None):
+    def random_walks(self, start_points, lengths, simple=False, probabilities=None):
         if len(start_points) != len(lengths):
             u.printf('there should be the same # of elements in start_points and lengths')
             sys.exit(0)
         njobs = -1
-        results = Parallel(n_jobs=njobs)(delayed(unwrap_random_walk)((self,start,length,simple,likelihood)) for start,length in zip(start_points, lengths))
+        results = Parallel(n_jobs=njobs)(delayed(unwrap_random_walk)((self,start,length,simple,probabilities)) for start,length in zip(start_points, lengths))
         return results
 

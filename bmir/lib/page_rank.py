@@ -47,5 +47,5 @@ class PageRank(GraphMatrix):
 
         return self.rank
 
-    def likelihood(self):
+    def probabilities(self):
         return self.rank / self.rank.sum()
