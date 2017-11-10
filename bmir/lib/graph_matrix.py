@@ -13,7 +13,7 @@ class GraphMatrix(object):
 
     def validate(self):
         if self.G is not None and isinstance(self.G,nx.Graph):
-            self.states = self.G.nodes()
+            self.states = sorted(self.G.nodes())
             if self.A is None:
                 self.A = u.get_adjacency_matrix(self.G,self.states)
                 self.G = None

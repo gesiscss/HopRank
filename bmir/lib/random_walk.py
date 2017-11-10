@@ -1,14 +1,14 @@
 import networkx as nx
-import sys
 import bmir.utils as u
 import numpy as np
 from joblib import Parallel, delayed
 from itertools import combinations, permutations
 from bmir.lib.graph_matrix import GraphMatrix
-
-def unwrap_random_walk(arg):
-    np.random.seed(None)
-    return RandomWalk.random_walk(arg[0],arg[1],arg[2],arg[3],arg[4],None)
+from scipy.sparse import csr_matrix
+from scipy.sparse import lil_matrix
+from sklearn.preprocessing import normalize
+import sys
+sys.setrecursionlimit(10000)
 
 class RandomWalk(GraphMatrix):
 
@@ -64,3 +64,24 @@ class RandomWalk(GraphMatrix):
             self.random_walk(length, teleportation, nodebias, next, path)
 
         return path
+
+    def likelihood(self, path):
+        P = lil_matrix((self.N,self.N))
+        source = None
+        target = None
+
+        for node in path:
+            node_id = self.states.index(node)
+
+            if source is None and target is None:
+                source = node_id
+
+            if source is not None and target is None:
+                target = node_id
+
+            if source is not None and target is not None:
+                P[source,target] += 1
+                source = target
+                target = None
+
+        return normalize(P.tocsr(), norm='l1', axis=1, copy=False, return_norm=False)
