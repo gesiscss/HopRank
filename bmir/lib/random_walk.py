@@ -65,7 +65,12 @@ class RandomWalk(GraphMatrix):
 
         return path
 
-    def likelihood(self, path):
+    def model(self, path):
+        '''
+        Transition probability matrix
+        :param path: 
+        :return: 
+        '''
         P = lil_matrix((self.N,self.N))
         source = None
         target = None
@@ -85,3 +90,14 @@ class RandomWalk(GraphMatrix):
                 target = None
 
         return normalize(P.tocsr(), norm='l1', axis=1, copy=False, return_norm=False)
+
+    def likelihood(self, model):
+        '''
+        Likelihood: Probability of data given model
+        :param model: 
+        :return: 
+        '''
+        return None
+
+    def AIC(self, likelihood):
+        return

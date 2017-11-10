@@ -20,6 +20,3 @@ class GraphMatrix(object):
             return True
         u.printf('G must exist and be an instance of networkx.Graph')
         sys.exit(0)
-
-    def probabilities(self):
-        return

@@ -27,7 +27,7 @@ print(nx.info(G))
 #############################################################################
 
 RW = RandomWalk(G,True)
-length = 10000
+length = 1000
 teleportation = 0.15
 np.set_printoptions(precision=2)
 
@@ -38,12 +38,12 @@ np.set_printoptions(precision=2)
 ### MODEL 1
 print('\n===== M1: UNIFORM - RANDOM WALK WITH TELEPORTATION {} ====='.format(teleportation))
 path = RW.random_walk(length,teleportation=teleportation)
-print(RW.likelihood(path).toarray())
+print(RW.model(path).toarray())
 
 ### MODEL 2
 print('\n===== M2: UNIFORM - RANDOM WALK WITHOUT TELEPORTATION =====')
 path = RW.random_walk(length)
-print(RW.likelihood(path).toarray())
+print(RW.model(path).toarray())
 
 #############################################################################
 # PAGERANK
@@ -57,12 +57,12 @@ print('\nPageRanks: \n{}'.format(nodebias))
 ### MODEL 3
 print('\n===== M3: PAGERANK - RANDOM WALK WITH TELEPORTATION {} ====='.format(teleportation))
 path = RW.random_walk(length,teleportation=teleportation,nodebias=nodebias)
-print(RW.likelihood(path).toarray())
+print(RW.model(path).toarray())
 
 ### MODEL 4
 print('\n===== M4: PAGERANK - RANDOM WALK WITHOUT TELEPORTATION =====')
 path = RW.random_walk(length,nodebias=nodebias)
-print(RW.likelihood(path).toarray())
+print(RW.model(path).toarray())
 
 #############################################################################
 # HOPRANK
