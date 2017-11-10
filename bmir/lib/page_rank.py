@@ -3,8 +3,8 @@ import numpy as np
 
 class PageRank(GraphMatrix):
 
-    def __init__(self, G):
-        super(PageRank, self).__init__(G)
+    def __init__(self, G, undirected=True):
+        super(PageRank, self).__init__(G, undirected)
         self.rank = None
 
     def run(self, alpha=0.85, maxerr=0.00001):

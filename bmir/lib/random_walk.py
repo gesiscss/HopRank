@@ -12,95 +12,55 @@ def unwrap_random_walk(arg):
 
 class RandomWalk(GraphMatrix):
 
-    def __init__(self, G):
-        super(RandomWalk, self).__init__(G)
+    def __init__(self, G, undirected=True):
+        super(RandomWalk, self).__init__(G, undirected)
 
-    def random_walk(self, start, length, simple=False, probabilities=None, path=None):
-        if simple:
-            walk = self._simple_random_walk(start, length, probabilities, path)
-        else:
-            walk = self._random_walk(start, length, probabilities, path)
-        return (walk, length)
+    def random_walk(self, length, teleportation=None, nodebias=None, start=None, path=None):
 
-    def _random_walk(self, start, length, probabilities=None, path=None):
-
-        if probabilities is not None and len(probabilities) != self.N:
+        if nodebias is not None and len(nodebias) != self.N:
             u.printf('probabilities vector does not contain probabilities for all {} nodes.'.format(self.N))
             sys.exit(0)
 
-        if start not in self.states:
-            u.printf('{} does not exist in graph.'.format(start))
-            sys.exit(0)
-
-        i = self.states.index(start)
+        # start node
+        if start is None:
+            start = np.random.choice(self.states)
+        start_id = self.states.index(start)
+        next_id = start_id
 
         if path is None:
             path = []
         path.append(start)
 
-        row = self.A.getrow(i)
-        if row.nnz == 0:
-            return path
-
-        outlinks = row.nonzero()[1]
-        if probabilities is not None:
-            prob = probabilities[outlinks]
-            next_id = np.random.choice(outlinks, p=prob / prob.sum())
+        # teleport (0) or neighbor (1)?
+        if teleportation is not None:
+            coin = np.random.choice(2,p=[teleportation,1.-teleportation])
         else:
-            next_id = np.random.choice(outlinks)
-        next = self.states[next_id]
+            coin = 1
 
-        if len(path) < length:
-            self._random_walk(next, length, probabilities, path)
-
-        return path
-
-    def _simple_random_walk(self, start, length, probabilities=None, path=None):
-
-        if probabilities is not None and len(probabilities) != self.N:
-            u.printf('probabilities vector does not contain probabilities for all {} nodes.'.format(self.N))
-            sys.exit(0)
-
-        if start not in self.states:
-            u.printf('{} does not exist in graph.'.format(start))
-            sys.exit(0)
-
-        i = self.states.index(start)
-
-        if path is None:
-            path = []
-
-        if start not in path:
-            path.append(start)
-
-        row = self.A.getrow(i)
-        if row.nnz == 0:
-            return path
-
-        outlinks = row.nonzero()[1]
-        if probabilities is not None:
-            prob = probabilities[outlinks]
-            next_id = np.random.choice(outlinks,p=prob/prob.sum())
+        if coin == 0:
+            # teleportation
+            while start_id == next_id:
+                next = np.random.choice(self.states)
+                next_id = self.states.index(next)
         else:
-            next_id = np.random.choice(outlinks)
-        next = self.states[next_id]
+            # random/biased neighbor
+            row = self.A.getrow(start_id)
+            if row.nnz == 0:
+                return path
 
-        if len(path) < length:
-            if next in path:
-                if row.nnz > 1:
-                    self._simple_random_walk(start, length, probabilities, path)
-                else:
-                    return path
+            nieghbors = row.nonzero()[1]
+            if nodebias is not None:
+                # bias
+                prob = nodebias[nieghbors]
+                next_id = np.random.choice(nieghbors, p=prob / prob.sum())
             else:
-                self._simple_random_walk(next, length, probabilities, path)
+                # random
+                next_id = np.random.choice(nieghbors)
+
+            next = self.states[next_id]
+
+        # need more walks?
+        if len(path) < length:
+            self.random_walk(length, teleportation, nodebias, next, path)
 
         return path
-
-    def random_walks(self, start_points, lengths, simple=False, probabilities=None):
-        if len(start_points) != len(lengths):
-            u.printf('there should be the same # of elements in start_points and lengths')
-            sys.exit(0)
-        njobs = -1
-        results = Parallel(n_jobs=njobs)(delayed(unwrap_random_walk)((self,start,length,simple,probabilities)) for start,length in zip(start_points, lengths))
-        return results
-

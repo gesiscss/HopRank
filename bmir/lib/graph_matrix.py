@@ -4,8 +4,8 @@ import sys
 
 class GraphMatrix(object):
 
-    def __init__(self, G):
-        self.G = G
+    def __init__(self, G, undirected=True):
+        self.G = G.to_undirected() if undirected else G
         self.A = None
         self.N = self.G.number_of_nodes()
         self.states = None

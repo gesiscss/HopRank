@@ -3,6 +3,11 @@ from bmir.lib.page_rank import PageRank
 import networkx as nx
 from joblib import Parallel, delayed
 import numpy as np
+from collections import Counter
+
+#############################################################################
+# GRAPH
+#############################################################################
 
 G = nx.DiGraph()
 G.add_edge('A','B')
@@ -15,32 +20,44 @@ G.add_edge('C','H')
 G.add_edge('D','I')
 G.add_edge('D','J')
 G.add_edge('E','K')
+print(nx.info(G))
 
-G = G.to_undirected()
-RW = RandomWalk(G)
-start_points = ['A','A','A','A','B','B','B','B','H','H']
-lengths = [2,3,4,5,2,3,4,5,5,4]
+#############################################################################
+# PARAMS
+#############################################################################
 
-### UNIFORM RANDOM WALK
-print('===== UNIFORM RANDOM WALK =====')
-for simple in [True,False]:
-    print('\n- Simple:{}'.format(simple))
-    results = RW.random_walks(start_points,lengths,simple,None)
-    walks = filter(lambda a: len(a[0]) == a[1], results)
-    residuals = filter(lambda a: len(a[0]) != a[1], results)
-    paths = [w[0] for w in walks]
-    print walks
+RW = RandomWalk(G,True)
+length = 110
+teleportation = 0.15
 
-### PAGERANK AND RANDOM WALK
-print('===== PAGERANK RANDOM WALK =====')
+#############################################################################
+# MODELS - BIASED RANDOM WALKERS
+#############################################################################
+
+### MODEL 1
+print('===== M1: UNIFORM - RANDOM WALK WITH TELEPORTATION =====')
+transitions = RW.random_walk(length,teleportation=teleportation)
+print Counter(transitions)
+
+### MODEL 2
+print('===== M2: UNIFORM - RANDOM WALK WITHOUT TELEPORTATION =====')
+transitions = RW.random_walk(length)
+print Counter(transitions)
+
+### MODEL 3
+print('===== M3: PAGERANK - RANDOM WALK WITH TELEPORTATION =====')
 PR = PageRank(G)
 PR.run()
-probabilities = PR.probabilities()
-print(probabilities)
-for simple in [True,False]:
-    print('\n- Simple:{}'.format(simple))
-    results = RW.random_walks(start_points,lengths,simple,probabilities)
-    walks = filter(lambda a: len(a[0]) == a[1], results)
-    residuals = filter(lambda a: len(a[0]) != a[1], results)
-    paths = [w[0] for w in walks]
-    print walks
+nodebias = PR.probabilities()
+print(nodebias.tolist())
+transitions = RW.random_walk(length,teleportation=teleportation,nodebias=nodebias)
+print Counter(transitions)
+
+### MODEL 4
+print('===== M4: PAGERANK - RANDOM WALK WITHOUT TELEPORTATION =====')
+PR = PageRank(G)
+PR.run()
+nodebias = PR.probabilities()
+print(nodebias.tolist())
+transitions = RW.random_walk(length,nodebias=nodebias)
+print Counter(transitions)
