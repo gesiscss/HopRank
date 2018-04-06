@@ -1821,8 +1821,8 @@ def validate_rel(params):
         sys.exit(2)
 
     params['rel'] = params['rel'].upper()
-    if params['rel'] not in ['O','T','MT','RAW']:
-        printf('reltype {} does not exist.'.format(params['navitype']))
+    if params['rel'] not in ['O','T','MT']:
+        printf('reltype {} does not exist.'.format(params['reltype']))
         sys.exit(2)
 
 def hops_overlap_summary(params):
@@ -1841,11 +1841,11 @@ def hops_overlap_summary(params):
         printf('end')
 
     printf('Reconstructing...')
-    cols = ['ontology','hop','navitype','overlap']
+    cols = ['ontology','hop','navitype','raw','overlap']
     df = pd.DataFrame(columns=cols)
 
-    for ontology,k,navitype,overlap in results:
-        df = df.append({'ontology':ontology, 'hop':k, 'navitype':navitype, 'overlap':overlap}, columns=cols)
+    for ontology,k,navitype,raw,overlap in results:
+        df = df.append({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols)
 
     printf(df.head(5))
     fn = os.path.join(params['cs','hopsoverlap','summary_rel{}_{}.csv'.format(params['rel'],params['year'])])
@@ -1860,6 +1860,7 @@ def _hop_overlap_summary(navitype, ontology, year, k, params):
         m = load_sparse_matrix(fn_hop_overlap)
         fn_hop = os.path.join(params['on'], 'hops', '{}_{}_{}HOP.mtx'.format(ontology.upper(), year, k))
         Ao = load_sparse_matrix(fn_hop)
+        raw = m.sum()
         overlap = m.sum() / Ao.sum()
 
     elif params['rel'] == 'T':
@@ -1868,6 +1869,7 @@ def _hop_overlap_summary(navitype, ontology, year, k, params):
         m = load_sparse_matrix(fn_hop_overlap)
         fn_transitions = os.path.join(params['cs'], 'graph', navitype, '{}_{}.adjlist'.format(ontology.upper(), year))
         Gt = nx.read_weighted_edgelist(fn_transitions)
+        raw = m.sum()
         overlap = m.sum() / Gt.number_of_edges()
 
     elif params['rel'] == 'MT':
@@ -1876,12 +1878,11 @@ def _hop_overlap_summary(navitype, ontology, year, k, params):
         m = load_sparse_matrix(fn_hop_overlap_weighted)
         fn_transitions = os.path.join(params['cs'], 'graph', navitype, '{}_{}.adjlist'.format(ontology.upper(), year))
         Gt = nx.read_weighted_edgelist(fn_transitions)
+        raw = m.sum()
         overlap = m.sum() / Gt.size(weight='weight')
 
-    elif params['rel'] == 'RAW':
-        overlap = m.sum()
 
-    return (ontology,k,navitype,overlap)
+    return (ontology,k,navitype,raw,overlap)
 
 ###########################################################################
 # MAIN
