@@ -20,3 +20,17 @@ of clickstreams, and  accurately reproduce the number of transitions between
 different k-HOP neighborhoods. We demonstrate that HopSurfer outperforms the 
 baseline models random surfer, and Markov chains in semantic navigation.
 
+### Scripts ###
+- **`ontologies.py`**: 
+Basic descriptive analysis for the ontology datasets. 
+
+- **`clickstrams.py`**:
+Basic descriptive analysis for the clickstream datasets.
+    - Generation of sessions transitions, navigation types, kHOP neighborhoods, kHOP overlaps.
+
+
+
+### Jupyter Notebook ###
+- **`likelihood.ipynb`**:
+Comparison between HopSurfer and baselines RandomWalker and Markov Chains, using AIC/BIC on toy-data.
+

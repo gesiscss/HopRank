@@ -642,7 +642,9 @@ def _plot_session_length_per_ontology(df, prefix, params, postfix=None):
     ax[0].legend(loc='best', fancybox=True, shadow=False, ncol=1, prop={'size': 6})
     ax[1].legend(loc='best', fancybox=True, shadow=False, ncol=1, prop={'size': 6})
 
-    fn = os.path.join(params['cs'], 'sessions_length_dist_{}_{}{}{}.png'.format(params['year'], prefix, '_top{}'.format(params['topk']) if 'topk' in params else '',
+    fn = os.path.join(params['cs'], 'sessions_length_dist_{}_{}{}{}.png'.format(params['year'],
+                                                                                prefix,
+                                                                                '_top{}'.format(params['topk']) if 'topk' in params else '',
                                                                                 '_{}'.format(postfix) if postfix is not None else ''))
     fig.savefig(fn, bbox_inches="tight")
     printf('figure {} done!'.format(fn))
@@ -676,8 +678,10 @@ def plot_sessions(params):
 
 def plot_transitions(params):
     df = transitions(params)
-    _plots(df, params, 'final')
-    _plot_navigation_types(df, params, 'final')
+    postfix = 'final_{}'.format(params['navitype'])
+
+    _plots(df, params, postfix)
+    _plot_navigation_types(df, params, postfix)
     _plot_possition_in_session(df, params)
 
 def _plot_possition_in_session(df, params):
@@ -688,7 +692,7 @@ def _plot_possition_in_session(df, params):
     sns.set(font_scale=1.5)
 
     norm = 'norm' in params and params['norm'].lower() in ['y', 't']
-    ontos = ['SNOMEDCT', 'MEDDRA', 'CPT', 'RXNORM', 'NDDF', 'CHMO']
+    ontos = ['SNOMEDCT', 'MEDDRA', 'CPT', 'RXNORM', 'NDDF', 'VANDF']
     tmp = df.loc[df._ontology.isin(ontos)].groupby(['_ontology', 'navitype', 'position']).size().reset_index().rename(columns={0: 'count'})
     types = np.sort(tmp.navitype.unique())
 
@@ -719,10 +723,11 @@ def _plot_possition_in_session(df, params):
     plt.subplots_adjust(top=1.20, bottom=0.1, left=0.10, right=0.95, hspace=0.35, wspace=0.35)
     plt.legend(bbox_to_anchor=(0.90, 1.25), markerscale=5.0, loc='upper right', borderaxespad=0., bbox_transform=plt.gcf().transFigure, ncol=len(types))
 
-    fn = os.path.join(params['cs'], 'transitions_top{}_position_in_session_{}{}{}.png'.format(params['topk'],
+    fn = os.path.join(params['cs'], 'transitions_top{}_position_in_session_{}{}{}_{}.png'.format(params['topk'],
                                                                                               params['year'],
                                                                                               '_withinonto' if 'withinonto' in params and params['withinonto'].lower()[0] in ['y', 't'] else '',
-                                                                                              '_norm' if norm else ''))
+                                                                                              '_norm' if norm else '',
+                                                                                                 params['navitype']))
 
     g.savefig(fn, bbox_inches="tight")
     printf('figure {} done!'.format(fn))
@@ -1487,39 +1492,37 @@ def transitions(params):
     validate_navitype(params)
 
     year = params['year']
-    fn = os.path.join(params['cs'], 'transitions_with_metadata_{}_{}{}{}_{}.csv'.format(year,
+    fn = os.path.join(params['cs'], 'transitions_with_metadata_{}_{}{}{}.csv'.format(year,
                                                                          params['set'],
                                                                          '_top{}'.format(params['topk']) if 'topk' in params else '',
-                                                                         '_withinonto' if 'withinonto' in params and params['withinonto'].lower()[0] in ['y','t'] else '',
-                                                                         params['navitype'].upper()))
+                                                                         '_withinonto' if 'withinonto' in params and params['withinonto'].lower()[0] in ['y','t'] else ''))
 
     if os.path.exists(fn):
         df = read_csv(fn)
     else:
         df = generate_session_ids(params)
 
-        n_jobs = multiprocessing.cpu_count() - 1
-        printf('{} n_jobs'.format(n_jobs))
-        results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_create_transitions_graph)(df, ontology, params) for ontology in df._ontology.unique())
-        printf('end')
+    n_jobs = multiprocessing.cpu_count() - 1
+    printf('{} n_jobs'.format(n_jobs))
+    results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_create_transitions_graph)(df, ontology, params) for ontology in df._ontology.unique())
+    printf('end')
 
-        printf('Recovering...')
-        df = pd.concat([r for r in results if r is not None], ignore_index=True)
-        printf('{} records ({} out of {} ontologies.)'.format(len(df), len([r for r in results if r is not False]), len(results)))
+    printf('Recovering...')
+    df = pd.concat([r for r in results if r is not None], ignore_index=True)
+    printf('{} records ({} out of {} ontologies.)'.format(len(df), len([r for r in results if r is not False]), len(results)))
 
-        printf('Removing sessions with less than {} clicks...'.format(MINREQ))
-        df = df.loc[df.remove != 1,:]
-        printf('{} records after removal.'.format(len(df)))
+    printf('Removing sessions with less than {} clicks...'.format(MINREQ))
+    df = df.loc[df.remove != 1,:]
+    printf('{} records after removal.'.format(len(df)))
 
-        for c in ['remove','valid']:
-            if c in df:
-                df = df.drop(c, axis=1)
+    for c in ['remove','valid']:
+        if c in df:
+            df = df.drop(c, axis=1)
 
-        printf('Adding possition in session to requests...')
-        df = add_possition_in_session(df)
+    printf('Adding possition in session to requests...')
+    df = add_possition_in_session(df)
 
-        df.to_csv(fn)
-        printf('file {} saved!'.format(fn))
+    save_df(df,fn)
 
     return df
 
@@ -1830,6 +1833,9 @@ def hops_overlap_summary(params):
     # columns: ontology, hop, navitype, overlap
     validate_rel(params)
 
+    cols = ['ontology', 'hop', 'navitype', 'raw', 'overlap']
+    df = pd.DataFrame(columns=cols)
+
     for navitype in NAVITYPES.keys():
         path_hop_overlaps = os.path.join(params['cs'], 'hopsoverlap', navitype)
         onto_year_khop = [x.split('.')[0].replace('HOP', '').split('_') for x in os.listdir(path_hop_overlaps) if os.path.isfile(os.path.join(path_hop_overlaps, x)) and x.endswith('HOP.mtx')]
@@ -1840,15 +1846,12 @@ def hops_overlap_summary(params):
         results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_hop_overlap_summary)(navitype, ontology, year, k, params) for ontology, year, k in onto_year_khop)
         printf('end')
 
-    printf('Reconstructing...')
-    cols = ['ontology','hop','navitype','raw','overlap']
-    df = pd.DataFrame(columns=cols)
-
-    for ontology,k,navitype,raw,overlap in results:
-        df = df.append({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols)
+        printf('Reconstructing...')
+        for ontology,k,navitype,raw,overlap in results:
+            df = df.append({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols)
 
     printf(df.head(5))
-    fn = os.path.join(params['cs','hopsoverlap','summary_rel{}_{}.csv'.format(params['rel'],params['year'])])
+    fn = os.path.join(params['cs'],'hopsoverlap','summary_rel{}_{}.csv'.format(params['rel'],params['year']))
     save_df(df,fn)
     return df
 
