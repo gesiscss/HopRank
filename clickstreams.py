@@ -1509,6 +1509,11 @@ def transitions(params):
 
     printf('Recovering...')
     df = pd.concat([r for r in results if r is not None], ignore_index=True)
+
+    if len(df) == 0:
+        printf('df is empty. nothing to save.')
+        return None
+
     printf('{} records ({} out of {} ontologies.)'.format(len(df), len([r for r in results if r is not False]), len(results)))
 
     printf('Removing sessions with less than {} clicks...'.format(MINREQ))
@@ -1528,9 +1533,16 @@ def transitions(params):
 
 def _create_transitions_graph(df,ontology,params):
 
+    fn = os.path.join(params['cs'], 'graph', params['navitype'], '{}_{}.adjlist'.format(ontology.upper(), params['year']))
+
+    if os.path.exists(fn):
+        printf('file {} already exists.'.format(fn))
+        return None
+
     target_navitype = NAVITYPES[params['navitype']]
     tmp = df.query("_ontology=='{}'".format(ontology))
     try:
+
         tmp = tmp.assign(remove=lambda x: 0)
 
         G = nx.DiGraph()
@@ -1560,7 +1572,6 @@ def _create_transitions_graph(df,ontology,params):
                 tmp.loc[tmp.req_id.isin(session.req_id), 'remove'] = 1
 
         G.name = '{}-{}'.format(ontology,params['year'])
-        fn = os.path.join(params['cs'], 'graph', params['navitype'], '{}_{}.adjlist'.format(ontology.upper(), params['year']))
         nx.write_weighted_edgelist(G, fn)
 
         printf('{}-{}: N({}), E({}), ME({}) done.'.format(ontology,params['year'],G.number_of_nodes(),G.size(),G.size(weight='weight')))
@@ -1606,7 +1617,7 @@ def summary(params):
 
     for o in df._ontology.unique():
         Go = nx.read_adjlist(os.path.join(params['on'], 'graph', '{}_{}.adjlist'.format(o.upper(), year)))
-        Gt = nx.read_weighted_edgelist(os.path.join(params['cs'], 'graph', NAVITYPES[params['navitype']],'{}_{}.adjlist'.format(o.upper(), year)))
+        Gt = nx.read_weighted_edgelist(os.path.join(params['cs'], 'graph', params['navitype'],'{}_{}.adjlist'.format(o.upper(), year)))
         dfo = df.query("_ontology == '{}'".format(o))
         tmp = pd.DataFrame({'Ontology':[o],
                            'Nodes':[Go.number_of_nodes()],
