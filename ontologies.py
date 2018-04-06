@@ -220,6 +220,7 @@ def from_csv(ontoname,year,fnsource,output):
         traceback.print_exc()
         return ERR_OTHER
 
+
 def from_parse(ontoname, year, fnsource, output):
 
     # parsing
@@ -227,7 +228,7 @@ def from_parse(ontoname, year, fnsource, output):
     newfn = os.path.join(output, '{}_{}_parsed{}.tmp'.format(ontoname, year,ext))
     try:
         # java -jar hierarchy-extractor.jar $1 $2
-        args = ['/home/malte/jre1.8.0_144/bin/java', '-jar', 'hierarchy-extractor.jar', fnsource, newfn]
+        args = ['java', '-jar', 'hierarchy-extractor.jar', fnsource, newfn]
         print('exec: {}'.format(' '.join(args)))
         r = subprocess.check_call(args)
     except Exception as ex:
@@ -372,7 +373,7 @@ if __name__ == '__main__':
         utils.validate_params(params, ['ondb', 'rp', 'on'])
         generate_ontology_graphs(params)
 
-
-# nice -n10 python ontologies.py -opt filtering -rp /bigdata/lespin/datasets/bioportal/ontologies_revisions_per_year/ -on /bigdata/lespin/bioportal/ontologies/
-# nice -n10 python ontologies.py -opt dataval -rp /bigdata/lespin/datasets/bioportal/ontologies_revisions_per_year/ -on /bigdata/lespin/bioportal/ontologies/ -ondb /bigdata/lespin/datasets/bioportal/ontologies/
-# nice -n10 python ontologies.py -opt graph -rp /bigdata/lespin/datasets/bioportal/ontologies_revisions_per_year/ -on /bigdata/lespin/bioportal/ontologies/ -ondb /bigdata/lespin/datasets/bioportal/ontologies/
+# example
+# nice -n10 python ontologies.py -opt filtering -rp bioportal/ontologies_revisions_per_year/ -on bioportal/ontologies/
+# nice -n10 python ontologies.py -opt dataval -rp bioportal/ontologies_revisions_per_year/ -on bioportal/ontologies/ -ondb datasets/bioportal/ontologies/
+# nice -n10 python ontologies.py -opt graph -rp bioportal/ontologies_revisions_per_year/ -on bioportal/ontologies/ -ondb datasets/bioportal/ontologies/
