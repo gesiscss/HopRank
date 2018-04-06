@@ -1626,7 +1626,7 @@ def summary(params):
     dfsummary = dfsummary.sort_values(['Multiple Transitions'], ascending=False).reset_index(drop=True)
     dfsummary.index = dfsummary.index + 1
     printf('totals: \n{}'.format(dfsummary[['Sessions','Unique Transitions','Multiple Transitions','IPs']].sum()))
-    fn = os.path.join(params['cs'],'summary_bioportal_{}.tex'.format(year))
+    fn = os.path.join(params['cs'],'summary_bioportal_{}_{}.tex'.format(year,params['navitype']))
     dfsummary.to_latex(fn)
     printf('file {} saved!'.format(fn))
 
@@ -1848,7 +1848,7 @@ def hops_overlap_summary(params):
 
         printf('Reconstructing...')
         for ontology,k,navitype,raw,overlap in results:
-            df = df.append({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols)
+            df = df.append(pd.DataFrame({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols))
 
     printf(df.head(5))
     fn = os.path.join(params['cs'],'hopsoverlap','summary_rel{}_{}.csv'.format(params['rel'],params['year']))
