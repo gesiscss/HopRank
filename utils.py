@@ -3,6 +3,7 @@ __author__ = 'lisette.espin'
 import getopt
 import sys
 from collections import defaultdict
+import networkx as nx
 
 # def get_params_ontologies():
 #     str = 'ontologies.py -p <ontologies_path> -o <outputfile>'
