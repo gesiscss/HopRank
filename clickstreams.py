@@ -50,6 +50,9 @@ MINREQ = 2
 LOGFILE = '/bigdata/lespin/bioportal/logs/log_<opt>_<date>.txt'
 NAVITYPES = {'ALL':'ALL', 'DB':'direct_browsing', 'LS':'local_search', 'ES':'external_search', 'EL':'external_link', 'O':'other'}
 TMPFOLDER = '/bigdata/lespin/tmp/'
+EXCLUDE = ['LOINC','SNOMEDCT','RXNORM','NDDF','VANDF','CHMO']
+FLAT = ['RXNORM', 'NDDF', 'VANDF', 'CHMO']
+MAXK = 30
 
 ###########################################################################
 # HANDLERS
@@ -66,7 +69,7 @@ def _log(msg):
         f.write(msg)
         f.write('\n')
 
-def save_df(df, fn):
+def save_csv(df, fn):
     if os.path.exists(fn):
         printf('file {} already exists.'.format(fn))
     else:
@@ -74,8 +77,8 @@ def save_df(df, fn):
         printf('file {} saved!'.format(fn))
 
 def read_csv(fn):
-    df = pd.read_csv(fn,index_col=0)
 
+    df = pd.read_csv(fn,index_col=0)
     if 'timestamp' in df:
         df['timestamp'] = pd.to_datetime(df.timestamp)
 
@@ -124,12 +127,14 @@ def to_undirected(graph,weighted=False):
 
 def load_sparse_matrix(fn):
     try:
+        printf('file {} loading...'.format(fn))
         obj = io.mmread(fn)
         printf('file {} loaded!'.format(fn))
         return obj.tocsr()
     except Exception as ex:
+        printf('file {} failed to load!'.format(fn))
         traceback.print_exc()
-        printf(ex.message)
+        printf(ex)
         return None
 
 def save_sparse_matrix(m, fn):
@@ -952,12 +957,12 @@ def init_analytics(params):
 
     # storing dataset (original)
     fn = os.path.join(params['cs'], 'original_clickstreams.csv')
-    save_df(df, fn)
+    save_csv(df, fn)
 
     # filtering request_actions
     dra = summary_request_actions(df)
     fn = os.path.join(params['cs'], 'original_clickstreams_request_actions.csv')
-    save_df(dra, fn)
+    save_csv(dra, fn)
 
 def summary_request_actions(df):
     request_actions = ['Ontology Summary', 'Browse Ontology Classes', 'Browse Ontology Class', 'Browse Ontology Class Tree', 'Browse Ontology Mappings', 'Ontology Analytics',
@@ -1004,9 +1009,9 @@ def filtering(params, plots=True):
             printf(df[['request','ontology','_ontology','concept','_concept']].sample(10))
 
         # storing files
-        save_df(df, fnfiltered)
+        save_csv(df, fnfiltered)
         fn = os.path.join(params['cs'], 'filtered_clickstreams_summary.csv')
-        save_df(dfsummary, fn)
+        save_csv(dfsummary, fn)
         if plots:
             render_mpl_table(dfsummary, prefix='filtered', header_columns=0, output=params['cs'])
 
@@ -1034,7 +1039,7 @@ def filtering(params, plots=True):
     if plots:
         dra = summary_request_actions(df)
         fn = os.path.join(params['cs'], 'filtered_clickstreams_request_actions.csv')
-        save_df(dra, fn)
+        save_csv(dra, fn)
 
     return df
 
@@ -1427,7 +1432,7 @@ def generate_session_ids(params):
         if c in df.columns:
             df = df.drop(c,axis=1)
 
-    save_df(df,fn)
+    save_csv(df, fn)
     printf(df.sample(10))
     return df
 
@@ -1492,42 +1497,49 @@ def transitions(params):
     validate_navitype(params)
 
     year = params['year']
-    fn = os.path.join(params['cs'], 'transitions_with_metadata_{}_{}{}{}.csv'.format(year,
+    fn = os.path.join(params['cs'], 'transitions_with_metadata_{}_{}{}{}_{}.csv'.format(year,
                                                                          params['set'],
                                                                          '_top{}'.format(params['topk']) if 'topk' in params else '',
-                                                                         '_withinonto' if 'withinonto' in params and params['withinonto'].lower()[0] in ['y','t'] else ''))
+                                                                         '_withinonto' if 'withinonto' in params and params['withinonto'].lower()[0] in ['y','t'] else '',
+                                                                          params['navitype']))
 
     if os.path.exists(fn):
         df = read_csv(fn)
     else:
-        df = generate_session_ids(params)
 
-    n_jobs = multiprocessing.cpu_count() - 1
-    printf('{} n_jobs'.format(n_jobs))
-    results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_create_transitions_graph)(df, ontology, params) for ontology in df._ontology.unique())
-    printf('end')
+        if params['navitype'] == 'ALL':
+            df = generate_session_ids(params)
+        else:
+            df = read_csv(fn.replace('_{}.csv'.format(params['navitype']),'_ALL.csv'))
 
-    printf('Recovering...')
-    df = pd.concat([r for r in results if r is not None], ignore_index=True)
+        n_jobs = multiprocessing.cpu_count() - 1
+        printf('{} n_jobs'.format(n_jobs))
+        results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_create_transitions_graph)(df, ontology, params) for ontology in df._ontology.unique())
+        printf('end')
 
-    if len(df) == 0:
-        printf('df is empty. nothing to save.')
-        return None
+        printf('Recovering...')
+        tmp = [r for r in results if r is not None]
 
-    printf('{} records ({} out of {} ontologies.)'.format(len(df), len([r for r in results if r is not False]), len(results)))
+        if len(tmp) == 0:
+            printf('df is empty. nothing to save. maybe already exists.')
+            return df
 
-    printf('Removing sessions with less than {} clicks...'.format(MINREQ))
-    df = df.loc[df.remove != 1,:]
-    printf('{} records after removal.'.format(len(df)))
+        df = pd.concat(tmp, ignore_index=True)
+        printf('{} records ({} out of {} ontologies.)'.format(len(df), len([r for r in results if r is not False]), len(results)))
 
-    for c in ['remove','valid']:
-        if c in df:
-            df = df.drop(c, axis=1)
+        printf('Removing sessions with less than {} clicks...'.format(MINREQ))
+        df = df.loc[df.remove != 1,:]
+        printf('{} records after removal.'.format(len(df)))
 
-    printf('Adding possition in session to requests...')
-    df = add_possition_in_session(df)
+        for c in ['remove','valid']:
+            if c in df:
+                df = df.drop(c, axis=1)
 
-    save_df(df,fn)
+        if params['navitype'] == 'ALL':
+            printf('Adding possition in session to requests...')
+            df = add_possition_in_session(df)
+
+        save_csv(df, fn)
 
     return df
 
@@ -1617,7 +1629,7 @@ def summary(params):
 
     for o in df._ontology.unique():
         Go = nx.read_adjlist(os.path.join(params['on'], 'graph', '{}_{}.adjlist'.format(o.upper(), year)))
-        Gt = nx.read_weighted_edgelist(os.path.join(params['cs'], 'graph', params['navitype'],'{}_{}.adjlist'.format(o.upper(), year)))
+        Gt = nx.read_weighted_edgelist(os.path.join(params['cs'], 'graph', params['navitype'],'{}_{}.adjlist'.format(o.upper(), year)),create_using=nx.DiGraph())
         dfo = df.query("_ontology == '{}'".format(o))
         tmp = pd.DataFrame({'Ontology':[o],
                            'Nodes':[Go.number_of_nodes()],
@@ -1634,6 +1646,10 @@ def summary(params):
         dfsummary = dfsummary.append(tmp, ignore_index=True)
         printf(tmp.iloc[0,:])
 
+
+
+    dfsummary = dfsummary[~dfsummary.Ontology.isin(list(set(EXCLUDE)-set(FLAT)))]
+
     dfsummary = dfsummary.sort_values(['Multiple Transitions'], ascending=False).reset_index(drop=True)
     dfsummary.index = dfsummary.index + 1
     printf('totals: \n{}'.format(dfsummary[['Sessions','Unique Transitions','Multiple Transitions','IPs']].sum()))
@@ -1643,7 +1659,7 @@ def summary(params):
 
 
 ###########################################################################
-# HOPs
+# HOPs ONTOLOGY
 ###########################################################################
 
 def create_hops_adj(params):
@@ -1652,9 +1668,9 @@ def create_hops_adj(params):
     ontologies = df._ontology.unique()
     del(df)
 
-    n_jobs = int(round(multiprocessing.cpu_count() / 4))
+    n_jobs = int(round(multiprocessing.cpu_count() / 2))
     printf('{} n_jobs'.format(n_jobs))
-    results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_visited_hops_ontology)(ontology, params['year'], params) for ontology in ontologies if ontology != 'CPT')
+    results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_visited_hops_ontology)(ontology, params['year'], params) for ontology in ontologies)
     printf('end')
 
     printf('SUMMARY:')
@@ -1674,7 +1690,9 @@ def _visited_hops_ontology(ontology, year, params):
 
     fn_hop = os.path.join(params['on'],'hops','{}_{}_<k>HOP.mtx'.format(ontology, year))
     kdone = None
-    for k in range(1,11,1):
+    hop = None
+    shape = None
+    for k in range(1,MAXK+1,1):
 
         fn = fn_hop.replace('<k>',str(k))
         if os.path.exists(fn):
@@ -1687,6 +1705,15 @@ def _visited_hops_ontology(ontology, year, params):
             hop = Ao.copy()
             shape = hop.shape
         else:
+
+            if hop is None:
+                hop = load_sparse_matrix(fn_hop.replace('<k>', str(kdone)))
+                shape = hop.shape
+
+            if hop.sum() == 0:
+                printf('the matrix has already reached zero (break). Up to {}HOP'.format(k - 1))
+                break
+
             hop = csr_matrix(hop.dot(Ao))
             # printf('1. dot product')
 
@@ -1744,12 +1771,17 @@ def _visited_hops_ontology(ontology, year, params):
 
         printf('saving {}-{} {}hop...'.format(ontology,year,k))
         save_sparse_matrix(hop, fn)
-        printf('{}-{} {}hop saved!'.format(ontology, year, k))
+        printf('{}-{} {}hop saved! --> {} shape, {} sum'.format(ontology, year, k, hop.shape, hop.sum()))
         kdone = k
 
     gc.collect()
     printf('=== {}-{}: done for {} HOPs! ==='.format(ontology, year, kdone))
     return (ontology,year,kdone)
+
+
+###########################################################################
+# HOPs OVERLAP
+###########################################################################
 
 def hops_overlap(params):
 
@@ -1770,11 +1802,15 @@ def hops_overlap(params):
 
 def _khop_overlap_ontology_year(ontology, year, k, params):
 
+    if ontology in EXCLUDE:
+        printf('{} exluded!'.format(ontology))
+        return (ontology, year, k, 'excluded')
+
     fn_ontology = os.path.join(params['on'], 'graph', '{}_{}.adjlist'.format(ontology.upper(), year))
     fn_hop = os.path.join(params['on'], 'hops', '{}_{}_{}HOP.mtx'.format(ontology.upper(), year, k))
-    fn_hop_overlap = os.path.join(params['cs'], 'hopsoverlap', NAVITYPES[params['navitype']], '{}_{}_{}HOP.mtx'.format(ontology.upper(), year, k))
-    fn_hop_overlap_weighted = os.path.join(params['cs'], 'hopsoverlap', NAVITYPES[params['navitype']], '{}_{}_{}HOP_weighted.mtx'.format(ontology.upper(), year, k))
-    fn_transitions = os.path.join(params['cs'], 'graph', NAVITYPES[params['navitype']],'{}_{}.adjlist'.format(ontology.upper(), year))
+    fn_hop_overlap = os.path.join(params['cs'], 'hopsoverlap', params['navitype'], '{}_{}_{}HOP.mtx'.format(ontology.upper(), year, k))
+    fn_hop_overlap_weighted = os.path.join(params['cs'], 'hopsoverlap', params['navitype'], '{}_{}_{}HOP_weighted.mtx'.format(ontology.upper(), year, k))
+    fn_transitions = os.path.join(params['cs'], 'graph', params['navitype'],'{}_{}.adjlist'.format(ontology.upper(), year))
 
     if os.path.exists(fn_hop_overlap):
         printf('{}-{} {}hop: already exists.'.format(ontology,year,k))
@@ -1787,15 +1823,22 @@ def _khop_overlap_ontology_year(ontology, year, k, params):
         return (ontology, year, k, 'skipt')
 
     Go = nx.read_adjlist(fn_ontology)
-    Gt = nx.read_weighted_edgelist(fn_transitions)
+    Gt = nx.read_weighted_edgelist(fn_transitions,create_using=nx.DiGraph())
+    printf('- {}_{}: {}HOP, Gtransitions directed: {} ({} sum of weights, {} edges, {} nodes)'.format(ontology, year, k, Gt.is_directed(), Gt.size(weight='weight'), Gt.number_of_edges(),Gt.number_of_nodes()))
 
-    printf('- {}_{}: {}HOP, only visited nodes...'.format(ontology, year, k))
+    if Gt.number_of_nodes() == 0:
+        return (ontology, year, k, 'done')
+
+    # convert Gt to undirected (sum weights)
+    # Gt = utils.convert_directed_to_undirected(Gt, weighted=True)
+    # printf('- {}_{}: {}HOP, Gtransitions UNdirected: {} ({} sum of weights, {} edges)'.format(ontology, year, k, not Gt.is_directed(), Gt.size(weight='weight'), Gt.number_of_edges()))
+
     nodes_o = sorted(Go.nodes())
     nodes_t = sorted(Gt.nodes())
-    printf('same concepts: {}'.format(len(set(nodes_o).intersection(set(nodes_t)))))
+    printf('{}_{}: {}HOP, same concepts: {}'.format(ontology, year, k, len(set(nodes_o).intersection(set(nodes_t)))))
     del(Go)
 
-    Ao = load_sparse_matrix(fn_hop)
+    Ao = load_sparse_matrix(fn_hop) #ontology
 
     # unweighted
     At = nx.to_scipy_sparse_matrix(Gt, nodelist=nodes_t, weight=None)
@@ -1805,24 +1848,24 @@ def _khop_overlap_ontology_year(ontology, year, k, params):
     nodes_t = np.array(nodes_t)
     indices = np.in1d(nodes_o, nodes_t, assume_unique=True)
 
-    Ao = slice_rows_cols(Ao, indices)
+    Ao = slice_rows_cols(Ao, indices) #ontology (only visited nodes)
 
     if Ao.shape != At.shape:
         printf('- {}_{}: {}HOP, shapes are different. {} != {}'.format(ontology, year, k, Ao.shape, At.shape))
         return (ontology, year, k, 'different shapes ({} != {})'.format(Ao.shape, At.shape))
 
-    printf('- {}_{}: {}HOP, overlap unweighted...'.format(ontology, year, k))
+    printf('- {}_{}: {}HOP, overlap unweighted (At:{}, Ao:{})...'.format(ontology, year, k, At.sum(), Ao.sum()))
     Aoverlap = Ao.multiply(At)
 
-    printf('- {}_{}: {}HOP, saving...'.format(ontology, year, k))
+    printf('- {}_{}: {}HOP, saving (Aoverlap: {})...'.format(ontology, year, k, Aoverlap.sum()))
     save_sparse_matrix(Aoverlap, fn_hop_overlap)
 
     # weighted:
-    printf('- {}_{}: {}HOP, overlap weighted...'.format(ontology, year, k))
-    At = nx.to_scipy_sparse_matrix(Gt, nodelist=nodes_t, weight='weighted')
+    At = nx.to_scipy_sparse_matrix(Gt, nodelist=nodes_t, weight='weight')
+    printf('- {}_{}: {}HOP, overlap weighted (At:{}, Ao:{})...'.format(ontology, year, k,  At.sum(), Ao.sum()))
     del (Gt)
     Aoverlap = Ao.multiply(At)
-    printf('- {}_{}: {}HOP, saving...'.format(ontology, year, k))
+    printf('- {}_{}: {}HOP, saving (Aoverlap: {})...'.format(ontology, year, k, Aoverlap.sum()))
     save_sparse_matrix(Aoverlap, fn_hop_overlap_weighted)
 
     printf('- {}_{}: {}HOP, done!...'.format(ontology, year, k))
@@ -1843,27 +1886,32 @@ def hops_overlap_summary(params):
     # index: #
     # columns: ontology, hop, navitype, overlap
     validate_rel(params)
+    validate_navitype(params)
 
-    cols = ['ontology', 'hop', 'navitype', 'raw', 'overlap']
+    fn = os.path.join(params['cs'], 'hopsoverlap', 'summary_{}_rel{}_{}.csv'.format(params['navitype'], params['rel'], params['year']))
+    if os.path.exists(fn):
+        return read_csv(fn)
+
+    cols = ['ontology', 'hop', 'navitype', 'raw', 'all', 'overlap']
     df = pd.DataFrame(columns=cols)
 
-    for navitype in NAVITYPES.keys():
-        path_hop_overlaps = os.path.join(params['cs'], 'hopsoverlap', navitype)
-        onto_year_khop = [x.split('.')[0].replace('HOP', '').split('_') for x in os.listdir(path_hop_overlaps) if os.path.isfile(os.path.join(path_hop_overlaps, x)) and x.endswith('HOP.mtx')]
-        printf('{} files (ontology_year_kHOP) to be analyzed...'.format(len(onto_year_khop)))
+    navitype = params['navitype']
+    path_hop_overlaps = os.path.join(params['cs'], 'hopsoverlap', navitype)
+    onto_year_khop = [x.split('.')[0].replace('HOP', '').split('_') for x in os.listdir(path_hop_overlaps) if os.path.isfile(os.path.join(path_hop_overlaps, x)) and x.endswith('HOP.mtx')]
+    printf('{} files (ontology_year_kHOP) to be analyzed...'.format(len(onto_year_khop)))
 
-        n_jobs = multiprocessing.cpu_count() - 1
-        printf('{} n_jobs'.format(n_jobs))
-        results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_hop_overlap_summary)(navitype, ontology, year, k, params) for ontology, year, k in onto_year_khop)
-        printf('end')
+    n_jobs = multiprocessing.cpu_count() - 1
+    printf('{} n_jobs'.format(n_jobs))
+    results = Parallel(n_jobs=n_jobs, temp_folder=TMPFOLDER)(delayed(_hop_overlap_summary)(navitype, ontology, year, k, params) for ontology, year, k in onto_year_khop)
+    printf('end')
 
-        printf('Reconstructing...')
-        for ontology,k,navitype,raw,overlap in results:
-            df = df.append(pd.DataFrame({'ontology':ontology, 'hop':k, 'navitype':navitype, 'raw':raw, 'overlap':overlap}, columns=cols))
+    printf('Reconstructing...')
+    for ontology,k,navitype,raw,all,overlap,valid in results:
+        if valid:
+            df = df.append(pd.DataFrame({'ontology':[ontology], 'hop':[k], 'navitype':[navitype], 'raw':[raw], 'all':[all], 'overlap':[overlap]}, columns=cols), ignore_index=True)
 
     printf(df.head(5))
-    fn = os.path.join(params['cs'],'hopsoverlap','summary_rel{}_{}.csv'.format(params['rel'],params['year']))
-    save_df(df,fn)
+    save_csv(df, fn)
     return df
 
 def _hop_overlap_summary(navitype, ontology, year, k, params):
@@ -1874,29 +1922,130 @@ def _hop_overlap_summary(navitype, ontology, year, k, params):
         m = load_sparse_matrix(fn_hop_overlap)
         fn_hop = os.path.join(params['on'], 'hops', '{}_{}_{}HOP.mtx'.format(ontology.upper(), year, k))
         Ao = load_sparse_matrix(fn_hop)
-        raw = m.sum()
-        overlap = m.sum() / Ao.sum()
+        raw = m.sum() * 2. # this is directed, so no-symmetric
+        all = Ao.sum()  # Ao is undirected, so symmetric
+        # dyad-transition-overlap / dyads
+
 
     elif params['rel'] == 'T':
 
         fn_hop_overlap = os.path.join(params['cs'], 'hopsoverlap', navitype, '{}_{}_{}HOP.mtx'.format(ontology, year, k))
         m = load_sparse_matrix(fn_hop_overlap)
         fn_transitions = os.path.join(params['cs'], 'graph', navitype, '{}_{}.adjlist'.format(ontology.upper(), year))
-        Gt = nx.read_weighted_edgelist(fn_transitions)
-        raw = m.sum()
-        overlap = m.sum() / Gt.number_of_edges()
+        Gt = nx.read_weighted_edgelist(fn_transitions,create_using=nx.DiGraph())
+        At = nx.to_scipy_sparse_matrix(Gt, weight=None)
+        raw = m.sum() # this is directed, so no-symmetric
+        all = At.sum() # this is directed, so no-symmetric
+        # dyad-transition-overlap / unique_transitions
 
     elif params['rel'] == 'MT':
 
         fn_hop_overlap_weighted = os.path.join(params['cs'], 'hopsoverlap', navitype, '{}_{}_{}HOP_weighted.mtx'.format(ontology.upper(), year, k))
         m = load_sparse_matrix(fn_hop_overlap_weighted)
         fn_transitions = os.path.join(params['cs'], 'graph', navitype, '{}_{}.adjlist'.format(ontology.upper(), year))
-        Gt = nx.read_weighted_edgelist(fn_transitions)
-        raw = m.sum()
-        overlap = m.sum() / Gt.size(weight='weight')
+        Gt = nx.read_weighted_edgelist(fn_transitions,create_using=nx.DiGraph())
+        At = nx.to_scipy_sparse_matrix(Gt, weight='weight')
+        raw = m.sum() # this is directed, so no-symmetric
+        all = At.sum() # this is directed, so no-symmetric
+        # dyad-transition-overlap-weighted / multiple_transitions
+
+    raw = raw.astype(np.float16)
+    all = all.astype(np.float32)
+
+    if ontology == 'MEDDRA':
+        printf('-----------------> {}hop ovelap in {} for {}: {}raw, {}all'.format(k, navitype, params['rel'], raw, all))
+
+    valid = all > 0
+    if not valid:
+        return None, None, None, None, None, None, valid
+
+    overlap = raw / all
+    return (ontology,k,navitype,raw,all,overlap,valid)
+
+def plot_hops_overlap_summary(params):
+    isStructure = params['rel'] == 'O'
+    params['overall'] = params['overall'].lower()[0] in ['y','t']
+
+    alldf = pd.DataFrame(columns=['ontology', 'hop', 'navitype', 'raw', 'all'])
+
+    # adding rest of transitions (to sum the 100%)
+    id = MAXK+1
+
+    for navitype in NAVITYPES.keys():
+        params['navitype'] = navitype
+        df = hops_overlap_summary(params)
+
+        # # adding rest of transitions (to sum the 100%)
+        # if not isStructure:
+        #     for ontology in df.ontology.unique():
+
+                # df = df.append(pd.DataFrame({'ontology': [ontology], 'navitype': [navitype], 'hop': [id], 'overlap': [0], 'raw': [0], 'all': [np.nan]}, columns=df.columns),ignore_index=True)
+                # # printf('raw:{}, all:{}, raw<all:{}'.format( df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'raw'].sum(), df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'all'].unique(),df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'raw'].sum() < df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'all'].unique()))
+                # if df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'raw'].sum() < df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'all'].unique():
+                #     df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop == id), 'overlap'] = 1.0 - df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'overlap'].sum()
+                #     df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop == id), 'raw'] = df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'all'].unique() - df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'raw'].sum()
+                # df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop == id), 'all'] = df.loc[(df.ontology == ontology) & (df.navitype == navitype) & (df.hop != id), 'all'].unique()
+
+                # printf('raw:{}, all:{}, raw<=all:{}'.format(df.loc[(df.ontology == ontology) & (df.navitype == navitype), 'raw'].sum(),
+                #                                            df.loc[(df.ontology == ontology) & (df.navitype == navitype), 'all'].unique(),
+                #                                            df.loc[(df.ontology == ontology) & (df.navitype == navitype), 'raw'].sum() <=
+                #                                            df.loc[(df.ontology == ontology) & (df.navitype == navitype), 'all'].unique()))
+
+        alldf = alldf.append(df)
+
+    #alldf['ontology'] = df.apply(lambda x: '{}{}'.format(x.ontology, '*' if x.ontology in FLAT else ''), axis=1)
+
+    df = alldf[~alldf.ontology.isin(EXCLUDE)]
+
+    # latex
+    fn = os.path.join(params['cs'], 'summary_khopoverlap_{}_{}_{}.csv'.format(params['year'], params['rel'], 'overall' if params['overall'] else 'by_ontology'))
+    df.to_csv(fn)
+
+    # plots
+    if params['overall']: #regarding onto (still grouped by navitype)
+        sns.set(font_scale=1.9)
+        fp = sns.factorplot(x="hop", y="overlap", hue="navitype",
+               data=df, kind="point", ci="sd",
+               estimator=np.mean, size=4, aspect=3,
+               hue_order=sorted(df.navitype.unique()),
+               legend=True) #,logy=True
+    else:
+        sns.set(font_scale=1.5)
+        fp = sns.factorplot(x="hop", y="overlap", hue="navitype",
+                            data=df, kind="point", col='ontology',
+                            size=2, aspect=2,
+                            col_wrap=4,
+                            hue_order=sorted(df.navitype.unique()),
+                            col_order=sorted(df.ontology.unique()),
+                            legend=True) #,logy=True
+
+    if params['overall']:
+        for axlist in fp.axes:
+            for ax in axlist:
+                # if not isStructure:
+                labels = [item.get_text() for item in ax.get_xticklabels()]
+                    # labels[-1] = '>{}'.format(id)
+                ax.set_xticklabels(labels,rotation=90,fontsize='small')
+                ax.grid(color='grey', linestyle='-', linewidth=0.5)
+    else:
+        for ax in fp.axes:
+            # if not isStructure:
+            labels = [item.get_text() for item in ax.get_xticklabels()]
+                # labels[-1] = '>{}'.format(id)
+            ax.set_xticklabels(labels,rotation=90,fontsize='small')
+            ax.grid(color='grey', linestyle='-', linewidth=0.5)
+
+    # plot
+    fp.set(facecolor='white')
+    fp.set_axis_labels("k-HOP neighborhood", "% neighbors" if isStructure else "% transitions")
+
+    fn = os.path.join(params['cs'], 'summary_khopoverlap_{}_{}_{}.png'.format(params['year'],params['rel'],'overall' if params['overall'] else 'by_ontology'))
+    fp.savefig(fn, bbox_inches="tight")
+    printf('figure {} done!'.format(fn))
+    plt.close()
 
 
-    return (ontology,k,navitype,raw,overlap)
+
 
 ###########################################################################
 # MAIN
@@ -1976,4 +2125,7 @@ if __name__ == '__main__':
         utils.validate_params(params, ['on', 'year', 'cs','navitype','rel'])
         hops_overlap_summary(params)
 
+    elif params['opt'] == 'plothopsoverlap':
+        utils.validate_params(params, ['on', 'year', 'cs','rel'])
+        plot_hops_overlap_summary(params)
 
