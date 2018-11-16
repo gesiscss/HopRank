@@ -49,6 +49,7 @@ ADJ_EXT = 'mtx'
 CSV_EXT = 'csv'
 TMPFOLDER = '/bigdata/lespin/tmp/'
 ALLNAVITYPE = 'ALL'
+MIN_SESSION_LENGTH = 5
 
 ########################################################################################
 # Class
@@ -93,11 +94,14 @@ class Transition(object):
         self._convert_DataFrame_to_DiGraph(df,nodes)
         self._sort_nodes()
         
-    def create_adjacency_matrix(self):
+    def create_adjacency_matrix(self, sorted_nodes=None):
         if self.H is None:
             raise ValueError("Clickstream graph has not been loaded!")
             return        
-        self.T = nx.to_scipy_sparse_matrix(self.H, nodelist=self.sorted_nodes)
+        if self.sorted_nodes is None and sorted_nodes is None:
+            raise ValueError("Nodes have no order!")
+            return
+        self.T = nx.to_scipy_sparse_matrix(self.H, nodelist=self.sorted_nodes if sorted_nodes is None else sorted_nodes)
         
     def _convert_DataFrame_to_DiGraph(self, df, nodes):
         
@@ -106,7 +110,7 @@ class Transition(object):
         try:
             
             for name,group in df.groupby(['ip','_sessionid']):
-                if len(group) < 2:
+                if len(group) < MIN_SESSION_LENGTH:
                     continue
 
                 dyad0=None

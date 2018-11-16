@@ -59,8 +59,9 @@ DIRECT_URL = 'DU'
 LOCAL_SEARCH = 'LS'
 EXTERNAL_SEARCH = 'ES'
 EXTERNAL_LINK = 'EL'
+HOME_SEARCH = 'HS'
 OTHERS = 'O'
-NAVITYPES = [DIRECT_CLICK, DETAILS, EXPAND, DIRECT_URL, LOCAL_SEARCH, EXTERNAL_SEARCH, EXTERNAL_LINK]
+NAVITYPES = [DIRECT_CLICK, DETAILS, EXPAND, DIRECT_URL, LOCAL_SEARCH, EXTERNAL_SEARCH, EXTERNAL_LINK, HOME_SEARCH]
 
 BIOPORTAL_SUBDOMAIN = 'bioportal'
 BIOPORTAL_DOMAIN = 'bioontology'
@@ -152,8 +153,15 @@ def _get_navitype(request, referer):
             
             if 'jump_to_nav' in params and params['jump_to_nav'][0] == 'true':
                 return LOCAL_SEARCH
-            else:
+            
+            elif '/search' in referer and '&query' in referer:
+                return HOME_SEARCH
+            
+            elif '/ontologies' in referer and 'p=' in referer and 'conceptid=' in referer:
                 return DETAILS
+            
+            else:
+                return OTHERS
             
         elif referer_domain in SEARCH_ENGINES:
             return EXTERNAL_SEARCH
