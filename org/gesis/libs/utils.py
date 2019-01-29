@@ -16,6 +16,7 @@ import datetime
 import pandas as pd
 import networkx as nx
 from scipy.io import mmwrite
+from scipy.io import mmread
 
 ########################################################################################
 # Functions
@@ -71,7 +72,18 @@ def load_graph(path, fn):
         printf(ex)
         printf('ERROR: {} NOT loaded!'.format(fn))
     return G
-    
+
+def read_graph(path, fn):
+    G = None
+    try:
+        fn = os.path.join(path,fn)
+        G = nx.read_gpickle(fn)
+        printf('{} loaded!'.format(fn))
+    except Exception as ex:
+        printf(ex)
+        printf('ERROR: {} NOT loaded!'.format(fn))
+    return G
+        
 def save_graph(G, path, fn):
     if G is None:
         raise ValueError("Graph has not been loaded!")
@@ -105,3 +117,14 @@ def save_adjacency(A, path, fn, comment, field):
     except Exception as ex:
         printf(ex)
         printf('ERROR: {} NOT saved!'.format(fn))        
+        
+def load_adjacency(path, fn): 
+    A = None
+    try:
+        fn = os.path.join(path,fn)
+        A = mmread(fn)
+        printf('{} loaded!'.format(fn))
+    except Exception as ex:
+        printf(ex)
+        printf('ERROR: {} NOT loaded!'.format(fn))         
+    return A

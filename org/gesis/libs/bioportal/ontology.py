@@ -12,8 +12,10 @@ __status__ = "Developing"
 ########################################################################################
 from org.gesis.libs.utils import printf
 from org.gesis.libs.utils import read_csv
+from org.gesis.libs.utils import read_graph
 from org.gesis.libs.utils import save_graph
 from org.gesis.libs.utils import save_adjacency
+from org.gesis.libs.utils import load_adjacency
 from org.gesis.libs.utils import save_series
 
 ########################################################################################
@@ -148,11 +150,19 @@ class Ontology(object):
     ################################################
     # I/O
     ################################################
+    def read_graph(self, path):
+        self.G = read_graph(path, self.get_onto_filename(path,GRAPH_EXT))
+        
     def save_graph(self, path):
         if self.G is None:
             raise ValueError("Ontology graph has not been loaded!")
         save_graph(self.G, path, self.get_onto_filename(path,GRAPH_EXT))
 
+    def load_adjacency(self, path):
+        comment = 'Ontology: {}\nYear: {}\nSubmissionID: {}'.format(self.name, self.year, self.submission_id)
+        field = 'integer'
+        self.A = load_adjacency(path, self.get_onto_filename(path,ADJ_EXT))
+        
     def save_adjacency(self, path):
         if self.A is None:
             raise ValueError("Ontology adj. matrix has not been loaded!")

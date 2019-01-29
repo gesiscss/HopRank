@@ -50,7 +50,7 @@ CSV_EXT = 'csv'
 CS_FN_SOURCE = 'BP_webpage_requests_<YEAR>.csv.bz2'
 TMPFOLDER = '/bigdata/lespin/tmp/'
 
-BREAK = 15
+BREAK = 30
 
 DIRECT_CLICK = 'DC'
 DETAILS = 'DE'
@@ -96,10 +96,10 @@ def preprocess_clickstream(cs_df):
     cs_df.loc[:,'_navitype'] = cs_df.apply(lambda row: _get_navitype(row._request, row.referer), axis=1)
     return cs_df
 
-def preprocess_sessions(cs_df):
+def preprocess_sessions(cs_df, lag_break_in_minutes=BREAK):
     cs_df.timestamp = pd.to_datetime(cs_df.timestamp)
     cs_df.sort_values(['ip','timestamp'], inplace=True)
-    gt_break = cs_df.timestamp.diff() > datetime.timedelta(minutes=BREAK)
+    gt_break = cs_df.timestamp.diff() > datetime.timedelta(minutes=lag_break_in_minutes)
     diff_user = cs_df.ip != cs_df.ip.shift()
     session_id = (diff_user | gt_break).cumsum()
     cs_df['_sessionid'] = session_id

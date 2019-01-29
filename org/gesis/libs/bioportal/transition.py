@@ -16,6 +16,7 @@ from org.gesis.libs.utils import load_graph
 from org.gesis.libs.utils import save_graph
 from org.gesis.libs.utils import save_adjacency
 from org.gesis.libs.utils import save_series
+from org.gesis.libs.utils import load_adjacency
 from org.gesis.libs.bioportal.ontology import get_short_concept_name
 
 ########################################################################################
@@ -49,7 +50,7 @@ ADJ_EXT = 'mtx'
 CSV_EXT = 'csv'
 TMPFOLDER = '/bigdata/lespin/tmp/'
 ALLNAVITYPE = 'ALL'
-MIN_SESSION_LENGTH = 5
+MIN_SESSION_LENGTH = 2
 
 ########################################################################################
 # Class
@@ -89,9 +90,9 @@ class Transition(object):
     # Methods
     ################################################
     
-    def load_clickstream_and_validate(self, cs_df, nodes):
+    def load_clickstream_and_validate(self, cs_df, nodes, min_session_length=MIN_SESSION_LENGTH):
         df = cs_df.query("_ontology == @self.name and _year == @self.year")
-        self._convert_DataFrame_to_DiGraph(df,nodes)
+        self._convert_DataFrame_to_DiGraph(df,nodes,min_session_length)
         self._sort_nodes()
         
     def create_adjacency_matrix(self, sorted_nodes=None):
@@ -103,14 +104,14 @@ class Transition(object):
             return
         self.T = nx.to_scipy_sparse_matrix(self.H, nodelist=self.sorted_nodes if sorted_nodes is None else sorted_nodes)
         
-    def _convert_DataFrame_to_DiGraph(self, df, nodes):
+    def _convert_DataFrame_to_DiGraph(self, df, nodes, min_session_length=MIN_SESSION_LENGTH):
         
         edges = defaultdict(lambda:0)
         
         try:
             
             for name,group in df.groupby(['ip','_sessionid']):
-                if len(group) < MIN_SESSION_LENGTH:
+                if len(group) < min_session_length:
                     continue
 
                 dyad0=None
@@ -175,4 +176,10 @@ class Transition(object):
     
     def save_nodes(self, path):
         save_series(pd.Series(self.sorted_nodes), path, self.get_cs_filename(path,CSV_EXT))
+        
+    def load_adjacency(self, path):
+        comment = 'Clickstreams\nOntology: {}\nYear: {}\nNavitype:{}'.format(self.name, self.year, self.get_navitype())
+        field = 'integer'
+        self.T = load_adjacency(path, self.get_cs_filename(path,ADJ_EXT))
+        
         
