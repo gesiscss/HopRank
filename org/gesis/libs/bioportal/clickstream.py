@@ -12,9 +12,6 @@ __status__ = "Developing"
 ########################################################################################
 from org.gesis.libs.utils import printf
 from org.gesis.libs.utils import read_csv
-from org.gesis.libs.utils import save_graph
-from org.gesis.libs.utils import save_adjacency
-from org.gesis.libs.utils import save_series
 from org.gesis.libs.bioportal.ontology import get_short_concept_name
 
 ########################################################################################

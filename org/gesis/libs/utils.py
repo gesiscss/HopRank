@@ -47,6 +47,17 @@ def log(path, prefix, cap):
 # Functions: pandas
 ########################################################################################
 
+def read_series(path, fn):    
+    s = None
+    try:
+        fn = os.path.join(path,fn)
+        s = pd.read_csv(fn, squeeze=True)
+        printf('{} loaded!'.format(fn))
+    except Exception as ex:
+        printf(ex)
+        printf('ERROR: {} NOT loaded!'.format(fn)) 
+    return s 
+        
 def save_series(s, path, fn):
     if s is None:
         raise ValueError("Series has not been loaded!")
@@ -62,16 +73,6 @@ def save_series(s, path, fn):
 ########################################################################################
 # Functions: Graphs
 ########################################################################################
-def load_graph(path, fn):
-    G = None
-    try:
-        fn = os.path.join(path,fn)
-        G = nx.read_gpickle(fn)
-        printf('{} loaded!'.format(fn))
-    except Exception as ex:
-        printf(ex)
-        printf('ERROR: {} NOT loaded!'.format(fn))
-    return G
 
 def read_graph(path, fn):
     G = None
@@ -106,9 +107,9 @@ def weighted_to_undirected(G):
 ########################################################################################
 # Functions: Matrices
 ########################################################################################            
-def save_adjacency(A, path, fn, comment, field):
+def save_sparse_matrix(A, path, fn, comment, field):
     if A is None:
-        raise ValueError("Adjacency matrix has not been loaded!")
+        raise ValueError("Sparse matrix has not been loaded!")
         return 
     try:
         fn = os.path.join(path,fn)
@@ -118,7 +119,7 @@ def save_adjacency(A, path, fn, comment, field):
         printf(ex)
         printf('ERROR: {} NOT saved!'.format(fn))        
         
-def load_adjacency(path, fn): 
+def read_sparse_matrix(path, fn): 
     A = None
     try:
         fn = os.path.join(path,fn)

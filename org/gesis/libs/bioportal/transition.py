@@ -12,11 +12,11 @@ __status__ = "Developing"
 ########################################################################################
 from org.gesis.libs.utils import printf
 from org.gesis.libs.utils import read_csv
-from org.gesis.libs.utils import load_graph
+from org.gesis.libs.utils import read_graph
+from org.gesis.libs.utils import read_sparse_matrix
 from org.gesis.libs.utils import save_graph
-from org.gesis.libs.utils import save_adjacency
+from org.gesis.libs.utils import save_sparse_matrix
 from org.gesis.libs.utils import save_series
-from org.gesis.libs.utils import load_adjacency
 from org.gesis.libs.bioportal.ontology import get_short_concept_name
 
 ########################################################################################
@@ -164,7 +164,7 @@ class Transition(object):
     # I/O
     ################################################
     def load_graph(self, path):
-        self.H = load_graph(path, self.get_cs_filename(path,GRAPH_EXT))      
+        self.H = read_graph(path, self.get_cs_filename(path,GRAPH_EXT))      
     
     def save_graph(self, path):
         save_graph(self.H, path, self.get_cs_filename(path,GRAPH_EXT))
@@ -172,7 +172,7 @@ class Transition(object):
     def save_adjacency(self, path):
         comment = 'Clickstreams\nOntology: {}\nYear: {}\nNavitype:{}'.format(self.name, self.year, self.get_navitype())
         field = 'integer'
-        save_adjacency(self.T, path, self.get_cs_filename(path,ADJ_EXT), comment=comment, field=field)
+        save_sparse_matrix(self.T, path, self.get_cs_filename(path,ADJ_EXT), comment=comment, field=field)
     
     def save_nodes(self, path):
         save_series(pd.Series(self.sorted_nodes), path, self.get_cs_filename(path,CSV_EXT))
@@ -180,6 +180,6 @@ class Transition(object):
     def load_adjacency(self, path):
         comment = 'Clickstreams\nOntology: {}\nYear: {}\nNavitype:{}'.format(self.name, self.year, self.get_navitype())
         field = 'integer'
-        self.T = load_adjacency(path, self.get_cs_filename(path,ADJ_EXT))
+        self.T = read_sparse_matrix(path, self.get_cs_filename(path,ADJ_EXT))
         
         

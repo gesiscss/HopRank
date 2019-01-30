@@ -13,15 +13,17 @@ __status__ = "Developing"
 from org.gesis.libs.utils import printf
 from org.gesis.libs.utils import read_csv
 from org.gesis.libs.utils import read_graph
+from org.gesis.libs.utils import read_series
+from org.gesis.libs.utils import read_sparse_matrix
 from org.gesis.libs.utils import save_graph
-from org.gesis.libs.utils import save_adjacency
-from org.gesis.libs.utils import load_adjacency
 from org.gesis.libs.utils import save_series
+from org.gesis.libs.utils import save_sparse_matrix
 
 ########################################################################################
 # System Dependencies
 ########################################################################################
 import os
+import gc
 import time
 import numpy as np
 import pandas as pd
@@ -146,11 +148,109 @@ class Ontology(object):
         except Exception as ex:
             printf(ex)
             printf('ERROR: {}-{} NOT sorted nodes!'.format(self.name,self.year))
+
             
+    def create_hops_matrices(self, path, maxk=5):
+        
+        if self.A is None:
+            printf('{}-{}-{}: Adjacency matrix is not loaded.'.format(self.name, self.year, self.submission_id))
+            return
+        
+        fn = self.get_khop_matrix_fn()
+        kdone = None
+        hop = None
+        shape = None
+        for k in range(1,maxk+1,1):
+
+            if os.path.exists(os.path.join(path,fn.replace('<k>',str(k)))):
+                printf('=== {}-{}: {}HOP already exists (pass)'.format(self.name, self.year, k))
+                kdone = k
+                continue
+
+            printf('=== {}-{}: {}HOP ==='.format(self.name,self.year,k))
+            if k == 1:
+                hop = self.A.copy()
+                shape = hop.shape
+            else:
+
+                if hop is None:
+                    hop = self.get_khop_matrix(path, kdone)
+                    shape = hop.shape
+
+                if hop.sum() == 0:
+                    printf('the matrix has already reached zero (break). Up to {}HOP'.format(k - 1))
+                    break
+
+                hop = csr_matrix(hop.dot(self.A))
+                # printf('1. dot product')
+
+                hop = sparse.find(hop)
+                # printf('2. >0')
+
+                hop = csr_matrix((np.ones(hop[2].size).astype(np.int8), (hop[0], hop[1])), shape, dtype=np.int8)
+                # printf('3. >0 --> 1')
+
+                hop = hop.tolil()
+                # printf('4. to lil')
+
+                hop.setdiag(0)
+                # printf('5. diagonal zero')
+
+                hop = hop.tocsr()
+                # printf('6. csr')
+
+                hop.eliminate_zeros()
+                # printf('6. eliminate zeros')
+
+                if hop.sum() > 0:
+
+                    # removing previous HOPS
+                    for previous_k in range(k - 1, 0, -1):
+
+                        previous_hop = self.get_khop_matrix(path, previous_k)                         
+                        # printf('9. loaded previous k done: {}'.format(previous_k))
+
+                        hop = hop - previous_hop
+                        # printf('10. minus')
+
+                        hop = (hop > 0).astype(np.int8)
+                        # printf('11. >0')
+
+                        hop = hop.tolil()
+                        # printf('12. to lil')
+
+                        hop.setdiag(0)
+                        # printf('13. diagonal to 0')
+
+                        hop = hop.tocsr()
+                        # printf('14. to csr')
+
+                        hop.eliminate_zeros()
+                        # printf('15. eliminate zeros')
+
+                        if hop.sum() == 0:
+                            printf('the matrix has already reached zero (break). Up to {}HOP'.format(previous_k))
+                            break
+
+                else:
+                    printf('the matrix has already reached zero (break). Up to {}HOP'.format(k-1))
+                    break
+
+            printf('saving {}-{} {}hop...'.format(self.name,self.year,k))
+            comment = 'k-hop:{}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(k,self.name, self.year, self.submission_id)
+            field = 'integer'
+            save_sparse_matrix(hop, path, fn.replace('<k>',str(k)), comment, field)
+            printf('{}-{} {}hop saved! --> {} shape, {} sum'.format(self.name, self.year, k, hop.shape, hop.sum()))
+            kdone = k
+
+        gc.collect()
+        printf('=== {}-{}: done for {} HOPs! ==='.format(self.name, self.year, kdone))        
+        return 0 if kdone == 1 and hop.sum() == 0 else kdone
+        
     ################################################
     # I/O
     ################################################
-    def read_graph(self, path):
+    def load_graph(self, path):
         self.G = read_graph(path, self.get_onto_filename(path,GRAPH_EXT))
         
     def save_graph(self, path):
@@ -158,22 +258,34 @@ class Ontology(object):
             raise ValueError("Ontology graph has not been loaded!")
         save_graph(self.G, path, self.get_onto_filename(path,GRAPH_EXT))
 
+    def get_khop_matrix_fn(self):
+        return '{}_{}_<k>HOP.mtx'.format(self.name, self.year)
+    
+    def get_khop_matrix(self, path, k):
+        fn = self.get_khop_matrix_fn()
+        return read_sparse_matrix(path, fn.replace('<k>', str(k)))
+        
+        
     def load_adjacency(self, path):
         comment = 'Ontology: {}\nYear: {}\nSubmissionID: {}'.format(self.name, self.year, self.submission_id)
         field = 'integer'
-        self.A = load_adjacency(path, self.get_onto_filename(path,ADJ_EXT))
+        self.A = read_sparse_matrix(path, self.get_onto_filename(path,ADJ_EXT))
         
     def save_adjacency(self, path):
         if self.A is None:
             raise ValueError("Ontology adj. matrix has not been loaded!")
         comment = 'Ontology: {}\nYear: {}\nSubmissionID: {}'.format(self.name, self.year, self.submission_id)
         field = 'integer'
-        save_adjacency(self.A, path, self.get_onto_filename(path,ADJ_EXT), comment=comment, field=field)
+        save_sparse_matrix(self.A, path, self.get_onto_filename(path,ADJ_EXT), comment=comment, field=field)
     
+    def load_nodes(self, path):        
+        self.sorted_nodes = read_series(path, self.get_onto_filename(path,CSV_EXT))
+        
     def save_nodes(self, path):
         if self.sorted_nodes is None:
             raise ValueError("Sorted nodes has not been loaded!")
         save_series(pd.Series(self.sorted_nodes), path, self.get_onto_filename(path,CSV_EXT))
+        
         
 ########################################################################################
 # Functions
