@@ -18,6 +18,7 @@ from org.gesis.libs.utils import save_graph
 from org.gesis.libs.utils import save_sparse_matrix
 from org.gesis.libs.utils import save_series
 from org.gesis.libs.bioportal.ontology import get_short_concept_name
+from org.gesis.libs.utils import to_symmetric
 
 ########################################################################################
 # System Dependencies
@@ -65,6 +66,7 @@ class Transition(object):
         self.numer_of_edges = 0
         self.H = None
         self.T = None
+        self.uT = None # undirected T
         self.sorted_nodes = None
         
     ################################################
@@ -76,6 +78,14 @@ class Transition(object):
     def get_adjacency_matrix(self):
         return self.T
     
+    def get_undirected_adjacency(self):
+        if self.uT is None:
+            self.uT = to_symmetric(self.T, binary=False)
+        return self.uT
+    
+    def set_nodes(self, nodes):
+        self.sorted_nodes = nodes
+        
     def get_nodes(self):
         return self.sorted_nodes
     
@@ -93,7 +103,7 @@ class Transition(object):
     def load_clickstream_and_validate(self, cs_df, nodes, min_session_length=MIN_SESSION_LENGTH):
         df = cs_df.query("_ontology == @self.name and _year == @self.year")
         self._convert_DataFrame_to_DiGraph(df,nodes,min_session_length)
-        self._sort_nodes()
+        self.sorted_nodes = sorted(list(self.H.nodes()))
         
     def create_adjacency_matrix(self, sorted_nodes=None):
         if self.H is None:
@@ -152,14 +162,6 @@ class Transition(object):
         printf('{}-{}-{}: {} concepts found, but {} kept (cros-val)'.format(self.name,self.year,self.navitype,tmp.number_of_nodes(),self.H.number_of_nodes()))
         del(tmp)
 
-        
-    def _sort_nodes(self):
-        try:
-            self.sorted_nodes = sorted(list(self.H.nodes()))
-        except Exception as ex:
-            printf(ex)
-            printf('ERROR: {}-{} NOT sorted nodes!'.format(self.name,self.year))
-            
     ################################################
     # I/O
     ################################################

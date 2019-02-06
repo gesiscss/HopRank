@@ -18,6 +18,7 @@ from org.gesis.libs.utils import read_sparse_matrix
 from org.gesis.libs.utils import save_graph
 from org.gesis.libs.utils import save_series
 from org.gesis.libs.utils import save_sparse_matrix
+from org.gesis.libs.utils import to_symmetric
 
 ########################################################################################
 # System Dependencies
@@ -43,7 +44,7 @@ from sklearn.preprocessing import normalize
 ########################################################################################
 ONTO_EXT = '.csv.gz'
 COMPRESSION = 'gzip'
-ONTO_FN = '<ONTO>_<YEAR>.<EXT>'
+ONTO_FN = '<LCC><ONTO>_<YEAR>.<EXT>'
 GRAPH_EXT = 'gpickle'
 ADJ_EXT = 'mtx'
 CSV_EXT = 'csv'
@@ -65,7 +66,11 @@ class Ontology(object):
         self.numer_of_edges = 0
         self.G = None
         self.A = None
+        self.uA = None
+        self.lcc_A = None
+        self.lcc_uA = None
         self.sorted_nodes = None
+        self.lcc_sorted_nodes = None
         self.root_folder = root_folder
         self.set__path()
     
@@ -75,14 +80,28 @@ class Ontology(object):
     def get_graph(self):
         return self.G
     
-    def get_adjacency_matrix(self):
+    def get_adjacency_matrix(self, lcc=False):
+        if lcc:
+            return self.lcc_A
         return self.A
     
-    def get_nodes(self):
+    def get_undirected_adjacency(self, lcc=False):
+        if lcc:
+            if self.lcc_uA is None:
+                self.lcc_uA = to_symmetric(self.lcc_A)
+            return self.lcc_uA
+
+        if self.uA is None:
+            self.uA = to_symmetric(self.A)
+        return self.uA
+    
+    def get_nodes(self, lcc=False):
+        if lcc:
+            return self.lcc_sorted_nodes
         return self.sorted_nodes
     
-    def get_onto_filename(self, path, ext):
-        return ONTO_FN.replace('<ONTO>',self.name).replace('<YEAR>',self.year).replace('<EXT>',ext)
+    def get_onto_filename(self, path, ext, lcc=False):
+        return ONTO_FN.replace('<LCC>','LCC_' if lcc else '').replace('<ONTO>',self.name).replace('<YEAR>',self.year).replace('<EXT>',ext)
         
     def set_root_folder(self, path):
         self.root_folder = path
@@ -95,11 +114,10 @@ class Ontology(object):
             self._path = None
         else:
             self._path = os.path.join(self.root_folder,self.name,str(self.submission_id))
-        
+    
     ################################################
     # Methods
     ################################################
-    
         
     def load_ontology(self):
         fn = [fn for fn in os.listdir(self._path) if fn.startswith(self.name) and fn.endswith(ONTO_EXT)]
@@ -114,13 +132,10 @@ class Ontology(object):
             printf('ERROR: {}-{} NOT loaded!'.format(self.name,self.year))
             return
         self._convert_DataFrame_to_DiGraph(df)  
-        self._sort_nodes()
-        
-    def create_adjacency_matrix(self):
-        if self.G is None:
-            raise ValueError("Ontology graph has not been loaded!")
-        self.A = nx.to_scipy_sparse_matrix(self.G, nodelist=self.sorted_nodes)
-        
+        self.sorted_nodes = sorted(list(self.G.nodes()))
+        self.lcc_sorted_nodes = sorted(list(max(nx.connected_component_subgraphs(self.G.to_undirected()), key=len).nodes()))
+    
+    
     def _convert_DataFrame_to_DiGraph(self, df):
         columns = ['Class ID', 'Parents']
         try:
@@ -141,22 +156,33 @@ class Ontology(object):
         except Exception as ex:
             printf(ex)
             printf('ERROR: {}-{} NOT converted from DataFrame to DiGraph!'.format(self.name,self.year))
-        
-    def _sort_nodes(self):
-        try:
-            self.sorted_nodes = sorted(list(self.G.nodes()))
-        except Exception as ex:
-            printf(ex)
-            printf('ERROR: {}-{} NOT sorted nodes!'.format(self.name,self.year))
-
+    
+    def create_adjacency_matrix(self, lcc=False):
+        if self.G is None:
+            raise ValueError("Ontology graph has not been loaded!")
             
-    def create_hops_matrices(self, path, maxk=5):
+        if lcc:
+            self.lcc_A = nx.to_scipy_sparse_matrix(self.G, nodelist=self.lcc_sorted_nodes)
+        else:
+            self.A = nx.to_scipy_sparse_matrix(self.G, nodelist=self.sorted_nodes)
+            
+    
+    def create_hops_matrices(self, path, maxk=5, lcc=False):
         
-        if self.A is None:
-            printf('{}-{}-{}: Adjacency matrix is not loaded.'.format(self.name, self.year, self.submission_id))
-            return
+        if lcc:
+            if self.lcc_A is None:
+                printf('{}-{}-{}: Adjacency matrix is not loaded.'.format(self.name, self.year, self.submission_id))
+                return
+            A = self.lcc_A
+        else:
+            if self.A is None:
+                printf('{}-{}-{}: Adjacency matrix is not loaded.'.format(self.name, self.year, self.submission_id))
+                return
+            A = self.A
         
-        fn = self.get_khop_matrix_fn()
+        uA = self.get_undirected_adjacency(lcc) # undirected
+            
+        fn = self.get_khop_matrix_fn(lcc)
         kdone = None
         hop = None
         shape = None
@@ -169,19 +195,19 @@ class Ontology(object):
 
             printf('=== {}-{}: {}HOP ==='.format(self.name,self.year,k))
             if k == 1:
-                hop = self.A.copy()
+                hop = uA.copy()
                 shape = hop.shape
             else:
 
                 if hop is None:
-                    hop = self.get_khop_matrix(path, kdone)
+                    hop = self.get_khop_matrix(path, kdone, lcc)
                     shape = hop.shape
 
                 if hop.sum() == 0:
                     printf('the matrix has already reached zero (break). Up to {}HOP'.format(k - 1))
                     break
 
-                hop = csr_matrix(hop.dot(self.A))
+                hop = csr_matrix(hop.dot(uA))
                 # printf('1. dot product')
 
                 hop = sparse.find(hop)
@@ -207,7 +233,7 @@ class Ontology(object):
                     # removing previous HOPS
                     for previous_k in range(k - 1, 0, -1):
 
-                        previous_hop = self.get_khop_matrix(path, previous_k)                         
+                        previous_hop = self.get_khop_matrix(path, previous_k, lcc)                         
                         # printf('9. loaded previous k done: {}'.format(previous_k))
 
                         hop = hop - previous_hop
@@ -240,11 +266,11 @@ class Ontology(object):
             comment = 'k-hop:{}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(k,self.name, self.year, self.submission_id)
             field = 'integer'
             save_sparse_matrix(hop, path, fn.replace('<k>',str(k)), comment, field)
-            printf('{}-{} {}hop saved! --> {} shape, {} sum'.format(self.name, self.year, k, hop.shape, hop.sum()))
+            printf('{}{}-{} {}hop saved! --> {} shape, {} sum'.format('LCC-' if lcc else '', self.name, self.year, k, hop.shape, hop.sum()))
             kdone = k
 
         gc.collect()
-        printf('=== {}-{}: done for {} HOPs! ==='.format(self.name, self.year, kdone))        
+        printf('=== {}{}-{}: done for {} HOPs! ==='.format('LCC-' if lcc else '', self.name, self.year, kdone))        
         return 0 if kdone == 1 and hop.sum() == 0 else kdone
         
     ################################################
@@ -258,33 +284,51 @@ class Ontology(object):
             raise ValueError("Ontology graph has not been loaded!")
         save_graph(self.G, path, self.get_onto_filename(path,GRAPH_EXT))
 
-    def get_khop_matrix_fn(self):
+    def get_khop_matrix_fn(self, lcc=False):
+        if lcc:
+            return 'LCC_{}_{}_<k>HOP.mtx'.format(self.name, self.year)
         return '{}_{}_<k>HOP.mtx'.format(self.name, self.year)
     
-    def get_khop_matrix(self, path, k):
-        fn = self.get_khop_matrix_fn()
+    def get_khop_matrix(self, path, k, lcc=False):
+        fn = self.get_khop_matrix_fn(lcc)
         return read_sparse_matrix(path, fn.replace('<k>', str(k)))
         
         
-    def load_adjacency(self, path):
+    def load_adjacency(self, path, lcc=False):
         comment = 'Ontology: {}\nYear: {}\nSubmissionID: {}'.format(self.name, self.year, self.submission_id)
         field = 'integer'
-        self.A = read_sparse_matrix(path, self.get_onto_filename(path,ADJ_EXT))
+        if lcc:
+            self.lcc_A = read_sparse_matrix(path, self.get_onto_filename(path,ADJ_EXT,lcc))
+        else:
+            self.A = read_sparse_matrix(path, self.get_onto_filename(path,ADJ_EXT))
         
-    def save_adjacency(self, path):
+    def save_adjacency(self, path, lcc=False):
         if self.A is None:
             raise ValueError("Ontology adj. matrix has not been loaded!")
-        comment = 'Ontology: {}\nYear: {}\nSubmissionID: {}'.format(self.name, self.year, self.submission_id)
+        comment = 'LCC: {}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(lcc,self.name, self.year, self.submission_id)
         field = 'integer'
-        save_sparse_matrix(self.A, path, self.get_onto_filename(path,ADJ_EXT), comment=comment, field=field)
+        if lcc:
+            save_sparse_matrix(self.lcc_A, path, self.get_onto_filename(path,ADJ_EXT,lcc), comment=comment, field=field)
+        else:
+            save_sparse_matrix(self.A, path, self.get_onto_filename(path,ADJ_EXT), comment=comment, field=field)
     
-    def load_nodes(self, path):        
-        self.sorted_nodes = read_series(path, self.get_onto_filename(path,CSV_EXT))
+    def load_nodes(self, path, lcc=False):        
+        if lcc:
+            self.lcc_sorted_nodes = read_series(path, self.get_onto_filename(path,CSV_EXT,lcc))
+        else:
+            self.sorted_nodes = read_series(path, self.get_onto_filename(path,CSV_EXT))
         
-    def save_nodes(self, path):
-        if self.sorted_nodes is None:
-            raise ValueError("Sorted nodes has not been loaded!")
-        save_series(pd.Series(self.sorted_nodes), path, self.get_onto_filename(path,CSV_EXT))
+    def save_nodes(self, path, lcc=False):
+        
+        if lcc:
+            if self.lcc_sorted_nodes is None:
+                raise ValueError("LCC sorted nodes has not been loaded!")
+            save_series(pd.Series(self.lcc_sorted_nodes), path, self.get_onto_filename(path,CSV_EXT,lcc))
+            
+        else:
+            if self.sorted_nodes is None:
+                raise ValueError("Sorted nodes has not been loaded!")
+            save_series(pd.Series(self.sorted_nodes), path, self.get_onto_filename(path,CSV_EXT))
         
         
 ########################################################################################

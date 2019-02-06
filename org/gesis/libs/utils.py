@@ -17,6 +17,7 @@ import pandas as pd
 import networkx as nx
 from scipy.io import mmwrite
 from scipy.io import mmread
+from scipy.sparse import lil_matrix
 
 ########################################################################################
 # Functions
@@ -129,3 +130,12 @@ def read_sparse_matrix(path, fn):
         printf(ex)
         printf('ERROR: {} NOT loaded!'.format(fn))         
     return A
+
+def to_symmetric(sparse_matrix,binary=True):
+    sparse_matrix=lil_matrix(sparse_matrix)
+    rows, cols = sparse_matrix.nonzero()
+    if binary:
+        sparse_matrix[cols, rows] = sparse_matrix[rows, cols]
+    else:
+        sparse_matrix[cols, rows] += sparse_matrix[rows, cols]
+    return sparse_matrix
