@@ -32,7 +32,7 @@ class RandomWalk(Navigation):
         super(RandomWalk, self).__init__(M, T)
         self.alpha = self.__get_damping_factor__(alpha)
         self.__validate__()
-        self.set_nparams(self.NPARAMS)
+        self.set_nparams(self.NPARAMS + int(alpha is None))
 
     def __validate__(self):
         if self.alpha is not None and (self.alpha < 0 or self.alpha > 1):
@@ -51,11 +51,13 @@ class RandomWalk(Navigation):
 
         if self.alpha > 0:
             if self.alpha == 1.0:
-                alpha = 0.99999
-
+                alpha = 0.9999999999
+            else:
+                alpha = self.alpha
+                
             ### random walk
-            P = lil_matrix(self.alpha * normalize(self.M, norm='l1', axis=1))
-            T = lil_matrix((np.ones((self.N, self.N)) * (1 - self.alpha)) / self.N)
+            P = lil_matrix(alpha * normalize(self.M, norm='l1', axis=1))
+            T = lil_matrix((np.ones((self.N, self.N)) * (1 - alpha)) / self.N)
             P = lil_matrix(P + T)
         else:
             ### always random jump (teleportation)
