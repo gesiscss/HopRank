@@ -34,6 +34,7 @@ class HopRank(Navigation):
 
     def __validate__(self, khop, betas):
         if khop is None:
+            # TODO: calculate from self.T
             raise ValueError("khop matrix must exist.") # check what kop do i need
         if betas is None:
             raise ValueError("betas vector must exist.")

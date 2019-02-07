@@ -54,7 +54,7 @@ class RandomWalk(Navigation):
                 alpha = 0.99999
 
             ### random walk
-            P = lil_matrix(alpha * normalize(self.M, norm='l1', axis=1))
+            P = lil_matrix(self.alpha * normalize(self.M, norm='l1', axis=1))
             T = lil_matrix((np.ones((self.N, self.N)) * (1 - self.alpha)) / self.N)
             P = lil_matrix(P + T)
         else:

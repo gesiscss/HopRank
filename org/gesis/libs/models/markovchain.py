@@ -33,4 +33,5 @@ class MarkovChain(Navigation):
 
         ### log-likelihood
         P = normalize(self.T, 'l1', axis=1)
-        self.loglikelihood = self.__loglikelihood__(P)
+        self.loglikelihood = (self.T.data * np.log(P.data)).sum()
+        

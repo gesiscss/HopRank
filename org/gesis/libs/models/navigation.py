@@ -66,9 +66,8 @@ class Navigation(object):
         '''
         self.M = M
         self.T = T
-        self.params = None
         self.nparams = None
-        self.nobservations = None
+        self.nobservations = self.T.sum()
         self.loglikelihood = None
         self.N = self.M.shape[0]
         self.aic = None
@@ -92,7 +91,7 @@ class Navigation(object):
         if self.nparams == 0 or self.nobservations / self.nparams > 40:
             self.aic = (-2 * self.loglikelihood) + (2 * self.nparams) + ((2 * self.nparams * (self.nparams + 1)) / (self.nobservations - self.nparams - 1))
         else:
-            self.aic = (-2 * self.nloglikelihood) + (2 * self.nparams)
+            self.aic = (-2 * self.loglikelihood) + (2 * self.nparams)
 
     def BIC(self):
         if self.nobservations - self.nparams - 1 == 0:
