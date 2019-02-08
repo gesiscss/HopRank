@@ -46,7 +46,7 @@ ONTO_EXT = '.csv.gz'
 COMPRESSION = 'gzip'
 ONTO_FN = '<LCC><ONTO>_<YEAR>.<EXT>'
 GRAPH_EXT = 'gpickle'
-ADJ_EXT = 'mtx'
+ADJ_EXT = 'npz'
 CSV_EXT = 'csv'
 SPECIAL_CONCEPT_NAME = '/ontology/STY/'.lower()
 ROOT_CONCEPT_FULL = 'http://www.w3.org/2002/07/owl#Thing'.lower()
@@ -168,6 +168,7 @@ class Ontology(object):
             
     
     def create_hops_matrices(self, path, maxk=5, lcc=False):
+        reached_zero = False
         
         if lcc:
             if self.lcc_A is None:
@@ -188,6 +189,9 @@ class Ontology(object):
         shape = None
         for k in range(1,maxk+1,1):
 
+            if reached_zero:
+                break
+                
             if os.path.exists(os.path.join(path,fn.replace('<k>',str(k)))):
                 printf('=== {}-{}: {}HOP already exists (pass)'.format(self.name, self.year, k))
                 kdone = k
@@ -204,7 +208,7 @@ class Ontology(object):
                     shape = hop.shape
 
                 if hop.sum() == 0:
-                    printf('the matrix has already reached zero (break). Up to {}HOP'.format(k - 1))
+                    printf('A: the matrix has already reached zero (break). Up to {}HOP'.format(k - 1))
                     break
 
                 hop = csr_matrix(hop.dot(uA))
@@ -255,24 +259,58 @@ class Ontology(object):
                         # printf('15. eliminate zeros')
 
                         if hop.sum() == 0:
-                            printf('the matrix has already reached zero (break). Up to {}HOP'.format(previous_k))
+                            printf('B: the matrix has already reached zero (break). Up to {}HOP'.format(k-1))
+                            reached_zero = True
                             break
 
                 else:
-                    printf('the matrix has already reached zero (break). Up to {}HOP'.format(k-1))
+                    printf('C: the matrix has already reached zero (break). Up to {}HOP'.format(k-1))
+                    reached_zero = True
                     break
 
-            printf('saving {}-{} {}hop...'.format(self.name,self.year,k))
-            comment = 'k-hop:{}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(k,self.name, self.year, self.submission_id)
-            field = 'integer'
-            save_sparse_matrix(hop, path, fn.replace('<k>',str(k)), comment, field)
-            printf('{}{}-{} {}hop saved! --> {} shape, {} sum'.format('LCC-' if lcc else '', self.name, self.year, k, hop.shape, hop.sum()))
-            kdone = k
-
+            if hop.sum() > 0:
+                kdone = k
+                printf('saving {}-{} {}hop...'.format(self.name,self.year,k))
+                comment = 'k-hop:{}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(k,self.name, self.year, self.submission_id)
+                field = 'integer'
+                save_sparse_matrix(hop, path, fn.replace('<k>',str(k)), comment, field)
+                printf('{}{}-{} {}hop saved! --> {} shape, {} sum'.format('LCC-' if lcc else '', self.name, self.year, k, hop.shape, hop.sum()))
+            else:
+                reached_zero = True
+                kdone = k-1
+            
         gc.collect()
         printf('=== {}{}-{}: done for {} HOPs! ==='.format('LCC-' if lcc else '', self.name, self.year, kdone))        
         return 0 if kdone == 1 and hop.sum() == 0 else kdone
         
+    def create_distance_matrix(self, path, hopspath, lcc=False):    
+        
+        fn_final = self.get_distance_matrix_fn(lcc)
+        if os.path.exists(os.path.join(path, fn_final)):
+            return read_sparse_matrix(path, fn_final)
+                                      
+        fname = self.get_khop_matrix_fn(lcc)
+        files = [fn for fn in os.listdir(hopspath) if fn.startswith(fname.replace('<k>HOP.npz','')) and fn.endswith('HOP.npz')]
+        m = None
+        
+        for fn in files:    
+            khop = int(fn.split('_')[-1].split('HOP')[0])
+            if m is None:
+                m = read_sparse_matrix(hopspath, fn) * khop
+            else:
+                m += read_sparse_matrix(hopspath, fn) * khop
+            m.eliminate_zeros()
+        
+        m = m.tolil()
+        m.setdiag(0)
+        m = m.tocsr()
+        m.eliminate_zeros()
+        
+        comment = 'LCC: {}\nOntology: {}\nYear: {}\nSubmissionID: {}'.format(lcc,self.name, self.year, self.submission_id)
+        field = 'integer'
+        save_sparse_matrix(m, path, fn_final, comment=comment, field=field)        
+        return m
+    
     ################################################
     # I/O
     ################################################
@@ -286,12 +324,15 @@ class Ontology(object):
 
     def get_khop_matrix_fn(self, lcc=False):
         if lcc:
-            return 'LCC_{}_{}_<k>HOP.mtx'.format(self.name, self.year)
-        return '{}_{}_<k>HOP.mtx'.format(self.name, self.year)
+            return 'LCC_{}_{}_<k>HOP.npz'.format(self.name, self.year)
+        return '{}_{}_<k>HOP.npz'.format(self.name, self.year)
+    
+    def get_distance_matrix_fn(self, lcc=False):
+        return '{}{}_{}_HOPs.npz'.format('LCC_' if lcc else '', self.name, self.year)        
     
     def get_khop_matrix(self, path, k, lcc=False):
         fn = self.get_khop_matrix_fn(lcc)
-        return read_sparse_matrix(path, fn.replace('<k>', str(k)))
+        return read_sparse_matrix(path, fn.replace('<k>', str(k))).tocsr()
         
         
     def load_adjacency(self, path, lcc=False):

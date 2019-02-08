@@ -64,5 +64,6 @@ class RandomWalk(Navigation):
             P = lil_matrix(np.ones((self.N, self.N)) / self.N)
 
         ### log-likelihood
+        P = normalize(P,'l1',axis=1)
         self.loglikelihood = self.__loglikelihood__(P)
 

@@ -42,16 +42,16 @@ from sklearn.preprocessing import normalize
 ########################################################################################
 # Constants
 ########################################################################################
-ONTO_EXT = '.csv.gz'
-COMPRESSION = 'gzip'
-ONTO_FN = '<LCC><ONTO>_<YEAR>.<EXT>'
-GRAPH_EXT = 'gpickle'
-ADJ_EXT = 'mtx'
-CSV_EXT = 'csv'
-SPECIAL_CONCEPT_NAME = '/ontology/STY/'.lower()
-ROOT_CONCEPT_FULL = 'http://www.w3.org/2002/07/owl#Thing'.lower()
-ROOT_CONCEPT = 'owl#Thing'.lower()
-SPECIAL_CASES = {'crisp': 'csp', 'who-art': 'who', 'chmo': 'obo', 'costart': 'cst', 'loinc': 'lnc', 'tao': 'obo'}
+# ONTO_EXT = '.csv.gz'
+# COMPRESSION = 'gzip'
+# ONTO_FN = '<LCC><ONTO>_<YEAR>.<EXT>'
+# GRAPH_EXT = 'gpickle'
+# ADJ_EXT = 'mtx'
+# CSV_EXT = 'csv'
+# SPECIAL_CONCEPT_NAME = '/ontology/STY/'.lower()
+# ROOT_CONCEPT_FULL = 'http://www.w3.org/2002/07/owl#Thing'.lower()
+# ROOT_CONCEPT = 'owl#Thing'.lower()
+# SPECIAL_CASES = {'crisp': 'csp', 'who-art': 'who', 'chmo': 'obo', 'costart': 'cst', 'loinc': 'lnc', 'tao': 'obo'}
 
 
 ########################################################################################

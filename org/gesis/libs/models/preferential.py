@@ -36,7 +36,7 @@ class PreferentialAttachment(Navigation):
 
         # pref. attachment)
         P = lil_matrix(np.repeat(self.M.sum(axis=0), self.N, axis=0))
-        P += lil_matrix(np.ones((self.N, self.N)) * (1 / self.N))  # maybe not
+        P += lil_matrix(np.ones((self.N, self.N)))
 
         # norm
         P = normalize(P, norm='l1', axis=1)

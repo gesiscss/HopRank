@@ -47,7 +47,7 @@ from sklearn.preprocessing import normalize
 ########################################################################################
 CS_FN = '<ONTO>_<YEAR>_<NAVITYPE>.<EXT>'
 GRAPH_EXT = 'gpickle'
-ADJ_EXT = 'mtx'
+ADJ_EXT = 'npz'
 CSV_EXT = 'csv'
 TMPFOLDER = '/bigdata/lespin/tmp/'
 ALLNAVITYPE = 'ALL'

@@ -15,9 +15,11 @@ import time
 import datetime
 import pandas as pd
 import networkx as nx
-from scipy.io import mmwrite
-from scipy.io import mmread
+# from scipy.io import mmwrite
+# from scipy.io import mmread
 from scipy.sparse import lil_matrix
+from scipy.sparse import save_npz
+from scipy.sparse import load_npz
 
 ########################################################################################
 # Functions
@@ -114,17 +116,17 @@ def save_sparse_matrix(A, path, fn, comment, field):
         return 
     try:
         fn = os.path.join(path,fn)
-        mmwrite(fn, A, comment=comment, field=field)
+        save_npz(fn, A, True)
         printf('{} saved!'.format(fn))
     except Exception as ex:
         printf(ex)
         printf('ERROR: {} NOT saved!'.format(fn))        
-        
+
 def read_sparse_matrix(path, fn): 
     A = None
     try:
         fn = os.path.join(path,fn)
-        A = mmread(fn)
+        A = load_npz(fn)
         printf('{} loaded!'.format(fn))
     except Exception as ex:
         printf(ex)

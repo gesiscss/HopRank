@@ -19,23 +19,22 @@ import numpy as np
 from scipy.sparse import lil_matrix
 from sklearn.preprocessing import normalize
 
-
 ########################################################################################
 # Class
 ########################################################################################
 class HopRank(Navigation):
 
-    def __init__(self, M, T, khop, betas):
+    def __init__(self, M, T, khops=None, betas=None):
         super(HopRank, self).__init__(M, T)
-        self.__validate__(khop, betas)
+        self.__validate__(khops, betas)
         self.set_nparams(len(betas))
         self.betas = betas
-        self.khop = khop
+        self.khops = khops
 
-    def __validate__(self, khop, betas):
-        if khop is None:
+    def __validate__(self, khops, betas):
+        if khops is None:
             # TODO: calculate from self.T
-            raise ValueError("khop matrix must exist.") # check what kop do i need
+            raise ValueError("khops matrix must exist.") # check what kop do i need
         if betas is None:
             raise ValueError("betas vector must exist.")
 
@@ -43,11 +42,12 @@ class HopRank(Navigation):
         super(HopRank, self).compute_loglikelihood()
 
         P = None
-        for hop, beta in enumerate(self.betas):
+        for hop,row in self.betas.iterrows():
+            beta = row.beta
             if hop == 0:
                 P = lil_matrix(np.ones((self.N, self.N)) * (beta / self.N))
             else:
-                m = lil_matrix(np.isin(self.khop.toarray(), [hop], assume_unique=False).astype(np.int8))
+                m = lil_matrix(np.isin(self.khops.toarray(), [hop], assume_unique=False).astype(np.int8))
                 P += lil_matrix(beta * normalize(m, norm='l1', axis=1))
 
         P = normalize(P, norm='l1', axis=1)
