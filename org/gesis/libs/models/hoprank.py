@@ -16,7 +16,7 @@ from org.gesis.libs.models.navigation import Navigation
 # System Dependencies
 ########################################################################################
 import numpy as np
-from scipy.sparse import lil_matrix
+from scipy.sparse import csr_matrix
 from sklearn.preprocessing import normalize
 
 ########################################################################################
@@ -24,17 +24,17 @@ from sklearn.preprocessing import normalize
 ########################################################################################
 class HopRank(Navigation):
 
-    def __init__(self, M, T, khops=None, betas=None):
+    def __init__(self, M, T, khops_fnc=None, betas=None):
         super(HopRank, self).__init__(M, T)
-        self.__validate__(khops, betas)
+        self.__validate__(khops_fnc, betas)
         self.set_nparams(len(betas))
         self.betas = betas
-        self.khops = khops
+        self.khops_fnc = khops_fnc
 
-    def __validate__(self, khops, betas):
-        if khops is None:
+    def __validate__(self, khops_fnc, betas):
+        if khops_fnc is None:
             # TODO: calculate from self.T
-            raise ValueError("khops matrix must exist.") # check what kop do i need
+            raise ValueError("khops_fnc matrix must exist.") # check what kop do i need
         if betas is None:
             raise ValueError("betas vector must exist.")
 
@@ -45,10 +45,12 @@ class HopRank(Navigation):
         for hop,row in self.betas.iterrows():
             beta = row.beta
             if hop == 0:
-                P = lil_matrix(np.ones((self.N, self.N)) * (beta / self.N))
+                P = csr_matrix(np.ones((self.N, self.N)) * (beta / self.N))
             else:
-                m = lil_matrix(np.isin(self.khops.toarray(), [hop], assume_unique=False).astype(np.int8))
-                P += lil_matrix(beta * normalize(m, norm='l1', axis=1))
+                # DO NOT DO TOARRAY
+                # m = csr_matrix(np.isin(self.khops.toarray(), [hop], assume_unique=False).astype(np.int8))
+                m = self.khops_fnc(hop)
+                P += csr_matrix(beta * normalize(m, norm='l1', axis=1))
 
         P = normalize(P, norm='l1', axis=1)
         self.loglikelihood = self.__loglikelihood__(P)

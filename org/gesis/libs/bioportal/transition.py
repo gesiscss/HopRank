@@ -112,7 +112,7 @@ class Transition(object):
         if self.sorted_nodes is None and sorted_nodes is None:
             raise ValueError("Nodes have no order!")
             return
-        self.T = nx.to_scipy_sparse_matrix(self.H, nodelist=self.sorted_nodes if sorted_nodes is None else sorted_nodes)
+        self.T = nx.to_scipy_sparse_matrix(self.H, nodelist=self.sorted_nodes if sorted_nodes is None else sorted_nodes, format='csr')
         
     def _convert_DataFrame_to_DiGraph(self, df, nodes, min_session_length=MIN_SESSION_LENGTH):
         

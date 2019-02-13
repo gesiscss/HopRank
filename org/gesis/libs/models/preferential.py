@@ -16,7 +16,7 @@ from org.gesis.libs.models.navigation import Navigation
 # System Dependencies
 ########################################################################################
 import numpy as np
-from scipy.sparse import lil_matrix
+from scipy.sparse import csr_matrix
 from sklearn.preprocessing import normalize
 
 
@@ -35,8 +35,8 @@ class PreferentialAttachment(Navigation):
         super(PreferentialAttachment, self).compute_loglikelihood()
 
         # pref. attachment)
-        P = lil_matrix(np.repeat(self.M.sum(axis=0), self.N, axis=0))
-        P += lil_matrix(np.ones((self.N, self.N)))
+        P = csr_matrix(np.repeat(self.M.sum(axis=0), self.N, axis=0))
+        P += csr_matrix(np.ones((self.N, self.N)))
 
         # norm
         P = normalize(P, norm='l1', axis=1)

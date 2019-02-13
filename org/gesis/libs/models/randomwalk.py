@@ -17,7 +17,7 @@ from org.gesis.libs.models.navigation import Navigation
 # System Dependencies
 ########################################################################################
 import numpy as np
-from scipy.sparse import lil_matrix
+from scipy.sparse import csr_matrix
 from sklearn.preprocessing import normalize
 
 
@@ -56,12 +56,12 @@ class RandomWalk(Navigation):
                 alpha = self.alpha
                 
             ### random walk
-            P = lil_matrix(alpha * normalize(self.M, norm='l1', axis=1))
-            T = lil_matrix((np.ones((self.N, self.N)) * (1 - alpha)) / self.N)
-            P = lil_matrix(P + T)
+            P = csr_matrix(alpha * normalize(self.M, norm='l1', axis=1))
+            T = csr_matrix((np.ones((self.N, self.N)) * (1 - alpha)) / self.N)
+            P = csr_matrix(P + T)
         else:
             ### always random jump (teleportation)
-            P = lil_matrix(np.ones((self.N, self.N)) / self.N)
+            P = csr_matrix(np.ones((self.N, self.N)) / self.N)
 
         ### log-likelihood
         P = normalize(P,'l1',axis=1)

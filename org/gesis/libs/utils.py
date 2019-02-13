@@ -13,6 +13,7 @@ __status__ = "Developing"
 import os
 import time
 import datetime
+import numpy as np
 import pandas as pd
 import networkx as nx
 # from scipy.io import mmwrite
@@ -110,13 +111,13 @@ def weighted_to_undirected(G):
 ########################################################################################
 # Functions: Matrices
 ########################################################################################            
-def save_sparse_matrix(A, path, fn, comment, field):
+def save_sparse_matrix(A, path, fn, comment=None, field=None):
     if A is None:
         raise ValueError("Sparse matrix has not been loaded!")
         return 
     try:
         fn = os.path.join(path,fn)
-        save_npz(fn, A, True)
+        save_npz(fn, A.tocsr(), True)
         printf('{} saved!'.format(fn))
     except Exception as ex:
         printf(ex)
@@ -126,7 +127,7 @@ def read_sparse_matrix(path, fn):
     A = None
     try:
         fn = os.path.join(path,fn)
-        A = load_npz(fn)
+        A = load_npz(fn).tocsr()
         printf('{} loaded!'.format(fn))
     except Exception as ex:
         printf(ex)
@@ -140,4 +141,44 @@ def to_symmetric(sparse_matrix,binary=True):
         sparse_matrix[cols, rows] = sparse_matrix[rows, cols]
     else:
         sparse_matrix[cols, rows] += sparse_matrix[rows, cols]
-    return sparse_matrix
+    return sparse_matrix.tocsr()
+
+def get_khop_with_partial_results(M, maxk):
+    previous = None
+    
+    for k in range(1,maxk+1,1):
+
+        if k == 1:            
+            hop = M.copy()
+        else:
+            printf('accumulating previous hops...')
+            if previous is None:
+                previous = hop.copy()                
+            else:
+                previous += hop.copy()
+            printf('multiplying: product.dot(m)...')
+            hop = hop.dot(M)
+        
+        hop = (hop>0).tocsr().astype(np.int8)
+        
+        if previous is not None:
+            printf('substracting previous hops from {}hop...'.format(k))
+            _hop = hop - previous
+        else:
+            _hop = hop.copy()
+
+        printf('>0...') 
+        _hop = (_hop>0)
+        printf('eliminating 0s...')
+        _hop.eliminate_zeros()
+        #_hop = _hop.tolil()
+        printf('setting diagonal to zero...')
+        _hop.setdiag(0)
+        printf('eliminating 0s...')
+        _hop.eliminate_zeros()
+        printf('to csr int...')
+        _hop = _hop.tocsr().astype(np.int8)  
+        printf('done {}-hop!'.format(k))
+        yield k,_hop
+        
+        

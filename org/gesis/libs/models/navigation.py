@@ -83,7 +83,9 @@ class Navigation(object):
     # Evaluation
     ################################################
     def __loglikelihood__(self, P):
-        return (self.T.toarray() * np.log(P.toarray())).sum()
+        P = P.tocoo()
+        return self.T.multiply( csr_matrix( (np.log(P.data),(P.row,P.col)), shape=P.shape ) ).sum()
+#         return (self.T.toarray() * np.log(P.toarray())).sum()
 
     def AIC(self):
         if self.nobservations - self.nparams - 1 == 0:
