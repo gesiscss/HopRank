@@ -24,17 +24,17 @@ from sklearn.preprocessing import normalize
 ########################################################################################
 class HopRank(Navigation):
 
-    def __init__(self, M, T, khops_fnc=None, betas=None):
+    def __init__(self, M, T, khops_fnc=None, betas=None, khops=None):
         super(HopRank, self).__init__(M, T)
-        self.__validate__(khops_fnc, betas)
+        self.__validate__(khops_fnc, betas, khops)
         self.set_nparams(len(betas))
         self.betas = betas
         self.khops_fnc = khops_fnc
+        self.khops = khops
 
-    def __validate__(self, khops_fnc, betas):
-        if khops_fnc is None:
-            # TODO: calculate from self.T
-            raise ValueError("khops_fnc matrix must exist.") # check what kop do i need
+    def __validate__(self, khops_fnc, betas, khops):
+        if khops_fnc is None and khops is None:
+            raise ValueError("either khops_fnc callback or khops matrix must exist.") # check what kop do i need        
         if betas is None:
             raise ValueError("betas vector must exist.")
 
@@ -48,9 +48,12 @@ class HopRank(Navigation):
                 P = csr_matrix(np.ones((self.N, self.N)) * (beta / self.N))
             else:
                 # DO NOT DO TOARRAY
-                # m = csr_matrix(np.isin(self.khops.toarray(), [hop], assume_unique=False).astype(np.int8))
-                m = self.khops_fnc(hop)
+                if self.khops_fnc is not None:
+                    m = self.khops_fnc(hop)
+                else:
+                    m = csr_matrix(np.isin(self.khops.toarray(), [hop], assume_unique=False).astype(np.int8))                
                 P += csr_matrix(beta * normalize(m, norm='l1', axis=1))
 
         P = normalize(P, norm='l1', axis=1)
         self.loglikelihood = self.__loglikelihood__(P)
+        return P

@@ -43,7 +43,7 @@ class Gravitational(Navigation):
         distance = self.distances.toarray()
         distance[distance == 0] = distance.max() + 1
         np.fill_diagonal(distance, distance.max() + 1)
-        distance = 1 / (distance) ** 2
+        distance = 1 / (distance.astype(np.float64)) ** 2
 
         # gravitational
         P = csr_matrix(np.multiply(np.repeat(self.M.sum(axis=0), self.N, axis=0), distance))        

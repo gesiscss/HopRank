@@ -20,6 +20,7 @@ from org.gesis.libs.utils import save_series
 from org.gesis.libs.utils import save_sparse_matrix
 from org.gesis.libs.utils import to_symmetric
 from org.gesis.libs.utils import get_khop_with_partial_results
+from org.gesis.libs.utils import get_khop_with_partial_results_load_previous
 
 ########################################################################################
 # System Dependencies
@@ -182,6 +183,9 @@ class Ontology(object):
     
     def create_hops_matrices(self, path, maxk=5, lcc=False):
         
+        self.set_lcc(lcc)
+        self.set_path_khop(path)
+        
         reached_zero = False
         
         if lcc:
@@ -195,14 +199,15 @@ class Ontology(object):
                 return
             A = self.A
         
-        uA = self.get_undirected_adjacency(lcc).tocsr() # undirected      
+        uA = self.get_undirected_adjacency(lcc).tocsr().astype(np.int32, copy=False) # undirected      
         kdone = 1
-                
-        khops = get_khop_with_partial_results(uA,maxk)
+                        
+        khops = get_khop_with_partial_results_load_previous(uA,maxk,self.get_khop)
         for k,hop in khops:    
             
             if hop.sum() == 0:
-                printf('{}-{}-{}: {}-hop has reached zero!'.format(self.name, self.year, self.submission_id, k))
+                printf('{}-{}-{}: {}-hop has reached zero!'.format(self.name, self.year, self.submission_id, k))                
+                kdone = k-1 if (k-kdone) > 1 else kdone
                 break
 
             kdone = k
@@ -212,7 +217,7 @@ class Ontology(object):
             printf('{}-{}-{}: {}-hop saving...'.format(self.name, self.year, self.submission_id, k))
             
             fn = self.get_khop_matrix_fn(k, lcc=lcc)
-            save_sparse_matrix(hop, path, fn)
+            #save_sparse_matrix(hop, path, fn)
             printf('{}-{}-{}: {}-hop done!'.format(self.name, self.year, self.submission_id, k))
             printf('')            
             

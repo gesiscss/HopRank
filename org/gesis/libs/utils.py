@@ -182,3 +182,97 @@ def get_khop_with_partial_results(M, maxk):
         yield k,_hop
         
         
+def get_khop_with_partial_results_load_previous(M, maxk, previousk_fnc):
+    import gc 
+    previous = None
+    hop = None
+    isnew = False
+    
+    for k in range(1,maxk+1,1):
+
+        # to not load if already exists.       
+        tmp = previousk_fnc(k)
+        isnew = tmp is None        
+        del(tmp)
+       
+        # compute if it doesnt exist
+        if k == 1:            
+            hop = M.copy()
+        else:
+            printf('multiplying: product.dot(m)...')
+            hop = hop.dot(M)
+        
+        printf('tocsr and int8...')
+        hop = (hop>0).tocsr().astype(np.int8)
+        _hop = hop.copy()
+        gc.collect()
+        
+        if _hop.sum() == 0:
+            yield k, _hop
+            del(_hop)
+            continue
+            
+        if k > 1 and isnew:
+            for previousk in np.arange(k-1, 0, -1):
+                printf('substracting {}hop from {}hop...'.format(previousk, k))
+                _hop = _hop - previousk_fnc(previousk)
+                
+                if _hop.sum() == 0:
+                    yield k, _hop
+                    del(_hop)
+                    continue
+            
+        printf('>0...') 
+        _hop = (_hop>0)
+        printf('eliminating 0s...')
+        _hop.eliminate_zeros()
+        #_hop = _hop.tolil()
+        printf('setting diagonal to zero...')
+        _hop.setdiag(0)
+        printf('eliminating 0s...')
+        _hop.eliminate_zeros()
+        printf('to csr int...')
+        _hop = _hop.tocsr().astype(np.int8)  
+        printf('done {}-hop!'.format(k))
+        yield k,_hop
+        del(_hop)
+
+def get_khop(M, maxk):
+    import gc 
+    
+    previous = None
+    
+    for k in range(1,maxk+1,1):
+
+        if k == 1:            
+            hop = M.copy()
+        else:
+            printf('accumulating previous hops...')
+            if previous is None:
+                previous = hop.copy()                
+            else:
+                previous += hop.copy()
+            printf('multiplying: product.dot(m)...')
+            hop = hop.dot(M)
+        
+        hop = (hop>0).tocsr().astype(np.int8, copy=False)
+        printf('eliminating 0s...')
+        hop.eliminate_zeros()
+        
+    if previous is not None:
+        printf('substracting previous hops from {}hop...'.format(k))
+        hop -= previous
+    
+    printf('>0...') 
+    hop = (hop>0)
+    printf('eliminating 0s...')
+    hop.eliminate_zeros()
+    #_hop = _hop.tolil()
+    printf('setting diagonal to zero...')
+    hop.setdiag(0)
+    printf('eliminating 0s...')
+    hop.eliminate_zeros()
+    printf('to csr int...')
+    hop = hop.tocsr().astype(np.int8, copy=False)  
+    printf('done {}-hop!'.format(k))
+    yield k,hop        
