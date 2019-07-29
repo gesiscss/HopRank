@@ -47,3 +47,5 @@ Transition class. Methods to load clickstreams per ontology, converting DataFram
 - **`org/gesis/libs/models/*.py`**:
 Class for 6 different models of navigation: HopRank, Markov chain, Random Walk, Preferential Attachment (degree), Gravitational (degree/distance^2). Computes loglikelihood, BIC, AIC.
 
+
+[![Binder](https://notebooks.gesis.org/binder/badge_logo.svg)](https://notebooks.gesis.org/binder/v2/gh/gesiscss/HopRank/master)
